@@ -1,0 +1,57 @@
+{
+  "name": "baton",
+  "productName": "Baton",
+  "version": "0.1.0",
+  "description": "A kanban board that hands each card from coding agent to coding agent, column by column.",
+  "license": "MIT",
+  "author": "ielgohary <15884858+IElgohary@users.noreply.github.com>",
+  "homepage": "https://github.com/IslamElgohary/baton#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IslamElgohary/baton.git"
+  },
+  "bugs": {
+    "url": "https://github.com/IslamElgohary/baton/issues"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22.5"
+  },
+  "keywords": [
+    "kanban",
+    "electron",
+    "ai-agents",
+    "coding-agents",
+    "git-worktree"
+  ],
+  "main": "./out/main/index.js",
+  "scripts": {
+    "predev": "node -e \"require('electron')\"",
+    "dev": "electron-vite dev --watch",
+    "build": "electron-vite build",
+    "prestart": "node -e \"require('electron')\"",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "e2e": "vitest run e2e",
+    "icon": "electron scripts/icon.cjs"
+  },
+  "devDependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/node": "^26.6.10",
+    "@types/react": "^19.3.2",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.5.0",
+    "electron-vite": "^6.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.2"
+  }
+}
