@@ -4,6 +4,8 @@
 
 <p align="center">A kanban board that hands each card from coding agent to coding agent, column by column.</p>
 
+<p align="center"><img src="docs/media/demo.gif" width="900" alt="A card is dragged into Plan; a pi agent session streams live; the card moves through Build and Review on its own and lands merged in Done"></p>
+
 ---
 
 Baton is a desktop app for running local coding agents through a workflow you design. Each board points at a git repository. Each column can carry a **trigger**: when a card enters it, Baton starts an agent session (with the harness, model, permissions and prompt you configured for that column) in the card's own **git worktree**. When the agent finishes, the card moves on to the next column, so a typical card goes Plan → Build → Review → Done without you touching it.
@@ -19,6 +21,32 @@ Baton is a desktop app for running local coding agents through a workflow you de
 - **Dependencies.** A blocked card waits, then moves to the next ⚡ column and starts once all its blockers have succeeded. Its worktree merges in the blockers' branches first.
 - **Finishing.** Per board, a finished card either merges into the base branch locally or opens a pull request. Tasks inside an epic get stacked PRs.
 - **Isolation.** Every card works on its own branch in its own worktree, so several agents can run in parallel (the limit is configurable).
+
+## Screenshots
+
+**The board.** Cards run through Plan → Build → Review → Done. One is waiting for an answer, epic tasks start automatically once their blockers are done, and finished work is merged.
+
+<img src="docs/media/board.png" alt="Board with running, waiting, blocked and merged cards">
+
+**A live session.** Everything the agent does, as it happens: its thinking, every tool call with input and output, and its replies.
+
+<img src="docs/media/live-session.png" alt="Card dialog showing a live Build session with thinking, file reads, edits, npm test and git commit">
+
+**Agents can ask.** The session pauses, the card shows *needs answer*, and your reply continues the same session.
+
+<img src="docs/media/question.png" alt="An agent's question with an answer box">
+
+**Epics.** Describe the work, let an agent break it into tasks with dependencies, edit the draft, then create the cards.
+
+<img src="docs/media/epic-breakdown.png" alt="Epic dialog with an agent-proposed task list and dependencies">
+
+**Columns are configurable.** Pick a harness, model, permissions and prompt for each column, and choose where a card goes on success or failure.
+
+<img src="docs/media/column-trigger.png" alt="Column settings: harness, model, read-only or full-auto, prompt template, success and failure routing">
+
+**Finishing.** Review the diff, then merge into the base branch or open a pull request, automatically when a card reaches Done.
+
+<img src="docs/media/finish-diff.png" alt="A merged card with its diff and the review agent's verdict">
 
 ## Requirements
 
