@@ -48,6 +48,16 @@ Baton is a desktop app for running local coding agents through a workflow you de
 
 <img src="docs/media/finish-diff.png" alt="A merged card with its diff and the review agent's verdict">
 
+## Install (macOS)
+
+1. Download the DMG from [Releases](https://github.com/IslamElgohary/baton/releases): `arm64` for Apple Silicon, `x64` for Intel Macs.
+2. Open it and drag **Baton** to **Applications**.
+3. The first time you open Baton, macOS blocks it: Baton isn't notarized by Apple yet. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the Baton message. You only need to do this once.
+
+   Or, in Terminal: `xattr -dr com.apple.quarantine /Applications/Baton.app`
+
+You still need an agent harness installed and signed in (see below). Baton finds it through your login shell's `PATH`, even when opened from the Dock.
+
 ## Requirements
 
 - macOS, or Linux with a desktop session (experimental)
@@ -69,7 +79,7 @@ npm run dev
 3. Add a card to **Backlog** and drag it into **Plan**. Click the card to watch the session.
 4. Click **⚙** on a column to change its harness, model, permissions, prompt, or where cards go on success or failure.
 
-To run the production build instead of dev mode: `npm run build && npm start`. There is no packaged `.app`/`.dmg` yet.
+To run the production build instead of dev mode: `npm run build && npm start`. To build the DMGs yourself: `npm run dist:mac` (output in `dist/`).
 
 ### Column prompts
 
@@ -110,13 +120,19 @@ Linux support is new. If something doesn't work, please [open an issue](https://
 
 Boards live in a SQLite database in the app's data folder: `~/Library/Application Support/Baton` on macOS, `~/.config/Baton` on Linux. Worktrees are created under the same folder. `BATON_USER_DATA=/some/dir npm run dev` uses a separate folder, which is handy for experiments.
 
+## Releasing
+
+Bump `version` in `package.json` (through a PR), then push a matching tag: `git tag v0.2.0 && git push origin v0.2.0`. The Release workflow builds both DMGs, smoke-tests the packaged app and creates a **draft** release with the DMGs attached. Review it and publish.
+
 ## Development
 
 ```bash
 npm test           # unit + integration tests (real git, fake agent harness)
 npm run typecheck
 npm run e2e        # real pi and Antigravity sessions in temp repos: needs `pi` and `agy`, costs model usage
-npm run smoke      # launch the built app and check it starts (run `npm run build` first; on Linux CI use xvfb-run)
+npm run smoke      # launch the built app and check it starts (run `npm run build` first; on Linux CI use xvfb-run;
+                   # SMOKE_APP=<path to executable> checks a packaged app)
+npm run dist:mac   # package dist/Baton-<version>-{arm64,x64}.dmg
 npm run icon       # regenerate build/icon.png and build/icon.icns from build/icon.svg
 ```
 

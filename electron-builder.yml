@@ -1,0 +1,22 @@
+# Packaging: `npm run dist:mac` → dist/Baton-<version>-<arch>.dmg
+appId: io.github.islamelgohary.baton
+productName: Baton
+directories:
+  output: dist
+  buildResources: build # icon.icns lives here
+files: # everything is bundled into out/ by electron-vite; the app has no runtime dependencies
+  - out/**
+  - package.json
+npmRebuild: false
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  # Ad-hoc signature: there is no Apple Developer ID yet, so the app isn't notarized and macOS asks the
+  # user to approve it once (see README "Install"). Swap in a real identity + notarize to remove that step.
+  identity: '-'
+  hardenedRuntime: true
+  notarize: false
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}

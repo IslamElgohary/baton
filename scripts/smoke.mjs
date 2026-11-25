@@ -1,16 +1,18 @@
 // Launches the built app (run `npm run build` first) with a throwaway data folder and checks, through the
 // Chrome DevTools protocol, that the window loads and the main process answers IPC. Exits non-zero on failure.
 // On Linux CI, run it under `xvfb-run` and set SMOKE_NO_SANDBOX=1 (see README: Linux sandbox).
+// SMOKE_APP=<executable> checks a packaged app instead, e.g. dist/mac-arm64/Baton.app/Contents/MacOS/Baton.
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const electron = createRequire(import.meta.url)('electron') // path to the binary; downloads it on first use
+const packaged = process.env.SMOKE_APP
+const electron = packaged || createRequire(import.meta.url)('electron') // dev: path to the binary; downloads it on first use
 const port = 9400 + Math.floor(Math.random() * 500)
 const data = mkdtempSync(join(tmpdir(), 'baton-smoke-'))
-const args = ['.', `--remote-debugging-port=${port}`, ...(process.env.SMOKE_NO_SANDBOX ? ['--no-sandbox'] : [])]
+const args = [...(packaged ? [] : ['.']), `--remote-debugging-port=${port}`, ...(process.env.SMOKE_NO_SANDBOX ? ['--no-sandbox'] : [])]
 const app = spawn(electron, args, { env: { ...process.env, BATON_USER_DATA: data }, stdio: ['ignore', 'inherit', 'inherit'] })
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -48,6 +50,7 @@ async function main() {
     sidebar: document.body.innerText.includes('Baton'),
     boards: (await window.api.invoke('listBoards')).length,
     harnesses: (await window.api.invoke('listHarnesses')).map((h) => h.id),
+    installed: (await window.api.invoke('listHarnesses')).filter((h) => h.path).map((h) => h.id), // informational
     settings: await window.api.invoke('getSettings'),
     badArgsRejected: await window.api.invoke('getBoard', 'x').then(() => false, () => true)
   }))()`)
