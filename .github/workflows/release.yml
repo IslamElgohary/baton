@@ -1,0 +1,32 @@
+name: Release
+
+# Push a version tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`) to build the macOS DMGs and attach them
+# to a *draft* GitHub release. Review the draft, then publish it.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Tag matches package.json version
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: npm run dist:mac
+      - name: Smoke-test the packaged app
+        run: npm run smoke
+        env:
+          SMOKE_APP: dist/mac-arm64/Baton.app/Contents/MacOS/Baton
+      - name: Draft release with the DMGs
+        run: gh release create "$GITHUB_REF_NAME" dist/*.dmg --draft --title "Baton $GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
