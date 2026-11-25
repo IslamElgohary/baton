@@ -41,7 +41,12 @@ export function markerOf(response: string): Marker | null {
     return { type: 'failed', text: [t.slice(0, f).trim(), t.slice(f + 8).trim()].filter(Boolean).join('\n') || 'Agent reported failure' }
   }
   const q = t.lastIndexOf('[QUESTION]')
-  if (q >= 0 && t.slice(q + 10).trim()) return { type: 'question', text: t.slice(q + 10).replace(/^[\s:*`_]+/, '').trim() }
+  if (q >= 0) {
+    // The question usually follows the marker, but models also write it first and end with a bare [QUESTION].
+    const after = t.slice(q + 10).replace(/^[\s:*`_]+/, '').trim()
+    const question = after || trimEnd(t.slice(0, q)).trim()
+    if (question) return { type: 'question', text: question }
+  }
   return null
 }
 

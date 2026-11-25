@@ -22,6 +22,9 @@ test('markerOf reads [DONE] / [FAILED] / [QUESTION] at the end of a reply', () =
   expect(markerOf('I launched a subagent, will report back.')).toBeNull()
   expect(markerOf('[DONE] but then more text')).toBeNull()
   expect(markerOf('[QUESTION]')).toBeNull() // no question text
+  // question written first, bare marker last (seen from kimi via pi)
+  expect(markerOf('I need the order.\n\nPlease tell me: **newest first** or **oldest first**?\n\n**[QUESTION]**'))
+    .toEqual({ type: 'question', text: 'I need the order.\n\nPlease tell me: **newest first** or **oldest first**?' })
 })
 
 test('extractArtifacts pulls named blocks and leaves stubs', () => {
