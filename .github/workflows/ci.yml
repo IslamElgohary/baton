@@ -24,3 +24,37 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  smoke:
+    # Launch the built app for real and check the window loads and the main process answers.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - if: runner.os == 'Linux'
+        run: command -v xvfb-run || (sudo apt-get update -qq && sudo apt-get install -y -qq xvfb)
+      - if: runner.os == 'Linux'
+        # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox needs: run unsandboxed in CI only.
+        run: xvfb-run -a -s "-screen 0 1400x900x24" npm run smoke
+        env:
+          SMOKE_NO_SANDBOX: '1'
+          SMOKE_SCREENSHOT: smoke-${{ matrix.os }}.png
+      - if: runner.os == 'macOS'
+        run: npm run smoke
+        env:
+          SMOKE_SCREENSHOT: smoke-${{ matrix.os }}.png
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.os }}
+          path: smoke-${{ matrix.os }}.png
+          if-no-files-found: ignore

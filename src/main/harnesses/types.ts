@@ -38,7 +38,7 @@ export interface Harness {
   name: string
   /** Default executable name, looked up on PATH unless overridden in Settings. */
   bin: string
-  /** Args for the interactive sign-in, opened in Terminal.app. */
+  /** Args for the interactive sign-in, opened in a new terminal window. */
   loginArgs: string[]
   probe(run: RunBin): Promise<Probe>
   /** Args that start a session process. `model` may be '' (harness default); `resume` continues an earlier session. */

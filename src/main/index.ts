@@ -12,6 +12,7 @@ import { createGit } from './git'
 import { harnesses } from './harnesses'
 import { adoptLoginShellPath, exec, which } from './proc'
 import { checkArgs } from './ipc-args'
+import { terminalLauncher } from './terminal'
 import { createRunner } from './runner'
 import { isAppUrl } from './security'
 
@@ -29,13 +30,20 @@ const appUrl = process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(rendererFile).
 let win: BrowserWindow | null = null
 const push = (e: PushEvent) => win?.webContents.send('push', e)
 
-/** Single-quote for POSIX sh. */
-const sq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
-
+/** Run a command (a harness's interactive sign-in) in a new terminal window. */
 async function openTerminal(argv: string[]) {
-  const line = argv.map(sq).join(' ').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-  const r = await exec('osascript', ['-e', `tell application "Terminal" to do script "${line}"`, '-e', 'tell application "Terminal" to activate'])
-  if (r.code !== 0) throw new Error(r.stderr.trim() || 'Could not open Terminal')
+  const l = terminalLauncher(process.platform, argv, which)
+  if (!l) throw new Error(`Couldn't find a terminal app to open. Run this in a terminal yourself:\n${argv.join(' ')}`)
+  if (l.wait) {
+    const r = await exec(l.bin, l.args)
+    if (r.code !== 0) throw new Error(r.stderr.trim() || 'Could not open a terminal')
+    return
+  }
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(l.bin, l.args, { detached: true, stdio: 'ignore' })
+    child.once('error', reject)
+    child.once('spawn', () => { child.unref(); resolve() })
+  })
 }
 
 app.whenReady().then(async () => {

@@ -79,7 +79,7 @@ export function Settings({ harnesses, reload, act }: Props) {
           </div>
         ))}
       </div>
-      <p className="mt-3 text-xs text-neutral-500">“Sign in…” opens the CLI in Terminal. Finish signing in there, then press Recheck.</p>
+      <p className="mt-3 text-xs text-neutral-500">“Sign in…” opens the CLI in a terminal window. Finish signing in there, then press Recheck.</p>
     </div>
   )
 }

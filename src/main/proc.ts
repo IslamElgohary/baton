@@ -15,14 +15,16 @@ export function exec(bin: string, args: string[], opts: { cwd?: string; timeoutM
 }
 
 /**
- * Apps launched from Finder get a minimal PATH. Copy the login shell's PATH so
+ * GUI-launched apps (Finder, a Linux desktop launcher) get a minimal PATH. Copy the login shell's PATH so
  * CLIs installed via Homebrew / npm / ~/.local/bin are found.
  */
 export async function adoptLoginShellPath(): Promise<void> {
-  const shell = process.env.SHELL || '/bin/zsh'
-  const r = await exec(shell, ['-ilc', 'printf "__PATH__%s__PATH__" "$PATH"'], { timeoutMs: 10_000 })
-  const m = r.stdout.match(/__PATH__(.*)__PATH__/)
-  if (m?.[1]) process.env.PATH = m[1]
+  if (process.platform === 'win32') return // Windows apps inherit the user's PATH
+  const shell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
+  // `env` prints the exported, colon-joined PATH in bash, zsh and fish alike (fish's "$PATH" would be space-joined).
+  const r = await exec(shell, ['-ilc', 'env'], { timeoutMs: 10_000 })
+  const path = r.stdout.split('\n').filter((l) => l.startsWith('PATH=')).pop()?.slice(5)
+  if (path) process.env.PATH = path
 }
 
 /** Absolute path of `name` on PATH, or null. Absolute paths are checked as-is. */

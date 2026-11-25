@@ -34,7 +34,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run src",
     "e2e": "vitest run e2e",
-    "icon": "electron scripts/icon.cjs"
+    "icon": "electron scripts/icon.cjs",
+    "smoke": "node scripts/smoke.mjs"
   },
   "devDependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -8,7 +8,7 @@
 
 Baton is a desktop app for running local coding agents through a workflow you design. Each board points at a git repository. Each column can carry a **trigger**: when a card enters it, Baton starts an agent session (with the harness, model, permissions and prompt you configured for that column) in the card's own **git worktree**. When the agent finishes, the card moves on to the next column, so a typical card goes Plan → Build → Review → Done without you touching it.
 
-> **Status: early.** macOS only. Supported agent harnesses: [pi](https://pi.dev) and the [Antigravity CLI](https://antigravity.google) (`agy`). Adapters for Claude Code, Codex and OpenCode are planned; see [Adding a harness](#adding-a-harness).
+> **Status: early.** Runs on macOS and Linux (Windows isn't supported yet). Supported agent harnesses: [pi](https://pi.dev) and the [Antigravity CLI](https://antigravity.google) (`agy`). Adapters for Claude Code, Codex and OpenCode are planned; see [Adding a harness](#adding-a-harness).
 
 ## Features
 
@@ -22,7 +22,7 @@ Baton is a desktop app for running local coding agents through a workflow you de
 
 ## Requirements
 
-- macOS
+- macOS or Linux (with a desktop session)
 - Node.js 22.5 or newer, and git
 - At least one agent harness, signed in: [pi](https://pi.dev) (`pi`) or the [Antigravity CLI](https://antigravity.google) (`agy`)
 - For pull requests: the [GitHub CLI](https://cli.github.com) (`gh`), signed in
@@ -66,9 +66,19 @@ Baton appends a short protocol to every session's first message. The agent ends 
 - **Local merges** only run when your main checkout is clean and on the base branch, and are aborted on conflict.
 - **Quitting** stops all agent sessions. Anything still running after a short grace period is killed.
 
+## Linux notes
+
+- **Signing in to a harness** opens a terminal window. Baton uses `$TERMINAL` if set, otherwise the first one it finds of GNOME Terminal, Konsole, Xfce Terminal, kitty, Alacritty, WezTerm, foot, `x-terminal-emulator` or xterm. If none is found, it shows the command to run yourself.
+- **"The SUID sandbox helper binary was found, but is not configured correctly"** when starting `npm run dev`: some distributions (e.g. Ubuntu 23.10 and later) restrict what Chromium's sandbox needs. Fix it once for this checkout:
+  ```bash
+  sudo chown root node_modules/electron/dist/chrome-sandbox
+  sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+  ```
+- Baton reads `PATH` from your login shell (bash, zsh or fish), so CLIs installed with npm or in `~/.local/bin` are found even when it's started from a desktop launcher.
+
 ## Data
 
-Boards live in a SQLite database in the app's data folder (`~/Library/Application Support/Baton`). Worktrees are created under the same folder. `BATON_USER_DATA=/some/dir npm run dev` uses a separate folder, which is handy for experiments.
+Boards live in a SQLite database in the app's data folder: `~/Library/Application Support/Baton` on macOS, `~/.config/Baton` on Linux. Worktrees are created under the same folder. `BATON_USER_DATA=/some/dir npm run dev` uses a separate folder, which is handy for experiments.
 
 ## Development
 
@@ -76,6 +86,7 @@ Boards live in a SQLite database in the app's data folder (`~/Library/Applicatio
 npm test           # unit + integration tests (real git, fake agent harness)
 npm run typecheck
 npm run e2e        # real pi and Antigravity sessions in temp repos: needs `pi` and `agy`, costs model usage
+npm run smoke      # launch the built app and check it starts (run `npm run build` first; on Linux CI use xvfb-run)
 npm run icon       # regenerate build/icon.png and build/icon.icns from build/icon.svg
 ```
 

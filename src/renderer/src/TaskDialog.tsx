@@ -6,6 +6,8 @@ import { StatusBadge } from './Board'
 import { Modal } from './Modal'
 import { Transcript } from './Transcript'
 
+const IS_MAC = navigator.userAgent.includes('Mac')
+
 interface Props {
   task: Task
   board: Board
@@ -135,9 +137,9 @@ function AnswerBox({ question, onSend }: { question: string; onSend: (text: stri
     <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
       <div className="mb-1 text-xs font-medium text-amber-700 dark:text-amber-300">❓ The agent is waiting for your answer</div>
       <div className="mb-2 text-sm whitespace-pre-wrap">{question}</div>
-      <textarea autoFocus className="input h-20" placeholder="Your answer… (⌘↵ to send)" value={text}
+      <textarea autoFocus className="input h-20" placeholder={`Your answer… (${IS_MAC ? '⌘↵' : 'Ctrl+Enter'} to send)`} value={text}
         onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) send() }} />
+        onKeyDown={(e) => { if (e.key === 'Enter' && (IS_MAC ? e.metaKey : e.ctrlKey)) send() }} />
       <div className="mt-2 flex justify-end"><button className="btn-primary" disabled={!text.trim()} onClick={send}>Send answer</button></div>
     </div>
   )
