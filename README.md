@@ -8,7 +8,7 @@
 
 Baton is a desktop app for running local coding agents through a workflow you design. Each board points at a git repository. Each column can carry a **trigger**: when a card enters it, Baton starts an agent session (with the harness, model, permissions and prompt you configured for that column) in the card's own **git worktree**. When the agent finishes, the card moves on to the next column, so a typical card goes Plan → Build → Review → Done without you touching it.
 
-> **Status: early.** Runs on macOS and Linux (Windows isn't supported yet). Supported agent harnesses: [pi](https://pi.dev) and the [Antigravity CLI](https://antigravity.google) (`agy`). Adapters for Claude Code, Codex and OpenCode are planned; see [Adding a harness](#adding-a-harness).
+> **Status: early.** Runs on macOS. Linux support is **experimental**: it builds, passes the tests and starts in CI, but hasn't seen real-world use yet. Windows isn't supported yet. Supported agent harnesses: [pi](https://pi.dev) and the [Antigravity CLI](https://antigravity.google) (`agy`). Adapters for Claude Code, Codex and OpenCode are planned; see [Adding a harness](#adding-a-harness).
 
 ## Features
 
@@ -22,7 +22,7 @@ Baton is a desktop app for running local coding agents through a workflow you de
 
 ## Requirements
 
-- macOS or Linux (with a desktop session)
+- macOS, or Linux with a desktop session (experimental)
 - Node.js 22.5 or newer, and git
 - At least one agent harness, signed in: [pi](https://pi.dev) (`pi`) or the [Antigravity CLI](https://antigravity.google) (`agy`)
 - For pull requests: the [GitHub CLI](https://cli.github.com) (`gh`), signed in
@@ -66,7 +66,9 @@ Baton appends a short protocol to every session's first message. The agent ends 
 - **Local merges** only run when your main checkout is clean and on the base branch, and are aborted on conflict.
 - **Quitting** stops all agent sessions. Anything still running after a short grace period is killed.
 
-## Linux notes
+## Linux notes (experimental)
+
+Linux support is new. If something doesn't work, please [open an issue](https://github.com/IslamElgohary/baton/issues).
 
 - **Signing in to a harness** opens a terminal window. Baton uses `$TERMINAL` if set, otherwise the first one it finds of GNOME Terminal, Konsole, Xfce Terminal, kitty, Alacritty, WezTerm, foot, `x-terminal-emulator` or xterm. If none is found, it shows the command to run yourself.
 - **"The SUID sandbox helper binary was found, but is not configured correctly"** when starting `npm run dev`: some distributions (e.g. Ubuntu 23.10 and later) restrict what Chromium's sandbox needs. Fix it once for this checkout:
