@@ -1,5 +1,6 @@
 import { antigravity } from './antigravity'
+import { pi } from './pi'
 import type { Harness } from './types'
 
 /** Registered harnesses. The first one is the default for new boards. */
-export const harnesses: Harness[] = [antigravity]
+export const harnesses: Harness[] = [antigravity, pi]

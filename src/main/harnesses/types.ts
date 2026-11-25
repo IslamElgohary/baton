@@ -21,7 +21,11 @@ export interface Probe {
  * What a harness parser emits: transcript events, plus the harness's own session id
  * (used to resume the session later).
  */
-export type ParsedEvent = SessionEvent | { kind: 'session'; id: string }
+export type ParsedEvent =
+  | SessionEvent
+  | { kind: 'session'; id: string }
+  /** A line to write back to the CLI's stdin, e.g. answering a dialog the CLI is blocked on. */
+  | { kind: 'reply'; line: string }
 
 /**
  * A local coding-agent CLI driven as a long-lived session: the app starts one process,
@@ -39,6 +43,8 @@ export interface Harness {
   probe(run: RunBin): Promise<Probe>
   /** Args that start a session process. `model` may be '' (harness default); `resume` continues an earlier session. */
   sessionArgs(o: { model: string; permission: Permission; resume?: string }): string[]
+  /** Stdin lines sent once when the session process starts, before the first turn (e.g. asking for its session id). */
+  startup?: string[]
   /** The stdin line that sends one user turn. */
   encodeTurn(text: string): string
   /** Harness-specific guidance appended to the first turn, e.g. how its read-only mode behaves. */

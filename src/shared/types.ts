@@ -98,6 +98,7 @@ export interface Artifact {
 export type SessionEvent =
   | { kind: 'user'; text: string } // a turn the app sent
   | { kind: 'text'; text: string } // assistant text (streamed in chunks)
+  | { kind: 'thinking'; text: string } // assistant reasoning, when the harness streams it
   | { kind: 'tool'; id: string; name: string; input?: unknown; output?: string; done: boolean }
   | { kind: 'info'; text: string } // app notes, harness stderr
   | { kind: 'turn_end'; ok: boolean; response: string; error?: string }

@@ -4,6 +4,7 @@ import type { SessionEvent } from '../../shared/types'
 type Block =
   | { type: 'user'; text: string }
   | { type: 'assistant'; text: string }
+  | { type: 'thinking'; text: string }
   | { type: 'tool'; id: string; name: string; input?: unknown; output?: string; done: boolean }
   | { type: 'info'; text: string }
   | { type: 'turn'; ok: boolean; error?: string }
@@ -19,6 +20,9 @@ export function fold(events: SessionEvent[]): Block[] {
     if (e.kind === 'text') {
       if (last?.type === 'assistant') last.text += e.text
       else blocks.push({ type: 'assistant', text: e.text })
+    } else if (e.kind === 'thinking') {
+      if (last?.type === 'thinking') last.text += e.text
+      else blocks.push({ type: 'thinking', text: e.text })
     } else if (e.kind === 'tool') {
       const t = tools.get(e.id)
       if (t) Object.assign(t, { input: e.input ?? t.input, output: e.output ?? t.output, done: e.done })
@@ -64,6 +68,13 @@ export function Transcript({ events, live }: { events: SessionEvent[]; live: boo
             )
           case 'assistant':
             return <div key={i} className="whitespace-pre-wrap">{b.text}</div>
+          case 'thinking':
+            return (
+              <details key={i} open={live && i === blocks.length - 1} className="text-xs text-neutral-500">
+                <summary className="cursor-pointer italic">thinking…</summary>
+                <div className="mt-1 border-l-2 border-neutral-300 pl-2 whitespace-pre-wrap italic dark:border-neutral-700">{b.text}</div>
+              </details>
+            )
           case 'tool':
             return (
               <details key={i} className="rounded-md border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">

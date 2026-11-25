@@ -15,7 +15,7 @@ src/main/finish.ts                  createFinisher(deps): merge or PR, stacked P
 src/main/git.ts                     createGit(exec): worktrees, merges, diffs, pushes
 src/main/proc.ts                    exec without a shell, login-shell PATH, which
 src/main/security.ts                isAppUrl(): what counts as the app's own page
-src/main/harnesses/                 Harness interface, registry, and the Antigravity adapter
+src/main/harnesses/                 Harness interface, registry, and adapters (pi, Antigravity)
 src/preload/index.ts                window.api.invoke(channel, …args) / on(event)
 src/renderer/src/                   App, Board (dnd-kit), dialogs, Transcript, Settings
 test/                               fake harness and captured CLI output used by the tests
@@ -88,11 +88,17 @@ Finishes are serialized per repository.
 
 - `probe`: version, sign-in state and model list.
 - `sessionArgs`: model, permission (`read` / `full`) and resume id.
+- `startup`: optional stdin lines sent once at start (pi asks `get_state` for its session id).
 - `encodeTurn`: how a user turn is written to stdin.
 - `promptNote`: harness-specific guidance.
-- `parser`: stdout line → events.
+- `parser`: stdout line → events. It can also emit a `reply` line for the CLI's stdin, e.g. pi extension dialogs, which block until answered and are cancelled because nobody can answer in a headless session.
 
-The read-only permission must be **enforced by the harness**, not just requested in the prompt, and must fail closed. For Antigravity, a session-only settings file denies `command(*)`, `write_file(*)` and `mcp(*)`.
+The read-only permission must be **enforced by the harness**, not just requested in the prompt, and must fail closed.
+
+| Harness | Session | Turn ends on | Read-only |
+|---|---|---|---|
+| pi | `pi --mode rpc`; `{"type":"prompt"}` per turn; resume with `--session <id>` | `agent_settled` | `--tools read,grep,find,ls --no-mcp --no-approve` |
+| Antigravity | `agy --print= --input-format stream-json`; resume with `--conversation <id>` | `result` | session settings denying `command(*)`, `write_file(*)`, `mcp(*)` |
 
 ## Security model
 

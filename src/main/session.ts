@@ -145,6 +145,7 @@ export function startSession(s: SessionSpec): { kill: (reason: string) => void; 
     if (!l.trim()) return
     for (const e of parser.line(l)) {
       if (e.kind === 'session') { s.onSessionId(e.id); continue }
+      if (e.kind === 'reply') { if (!outcome) child.stdin!.write(e.line + '\n'); continue }
       if (e.kind === 'text') turnText += e.text
       s.onEvent(e)
       if (e.kind === 'turn_end') onTurnEnd(e)
@@ -164,6 +165,7 @@ export function startSession(s: SessionSpec): { kill: (reason: string) => void; 
     s.onEvent({ kind: 'info', text: chunk.trimEnd() })
   })
 
+  for (const line of s.harness.startup ?? []) child.stdin!.write(line + '\n')
   send(s.firstTurn)
   const result = new Promise<number | null>((resolve) => {
     child.on('error', (e) => { stderr += e.message; resolve(null) })

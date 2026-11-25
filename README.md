@@ -8,7 +8,7 @@
 
 Baton is a desktop app for running local coding agents through a workflow you design. Each board points at a git repository. Each column can carry a **trigger**: when a card enters it, Baton starts an agent session (with the harness, model, permissions and prompt you configured for that column) in the card's own **git worktree**. When the agent finishes, the card moves on to the next column, so a typical card goes Plan → Build → Review → Done without you touching it.
 
-> **Status: early.** macOS only, and the only agent harness wired up so far is the [Antigravity CLI](https://antigravity.google) (`agy`). Adapters for Claude Code, Codex, pi and OpenCode are planned; see [Adding a harness](#adding-a-harness).
+> **Status: early.** macOS only. Supported agent harnesses: [pi](https://pi.dev) and the [Antigravity CLI](https://antigravity.google) (`agy`). Adapters for Claude Code, Codex and OpenCode are planned; see [Adding a harness](#adding-a-harness).
 
 ## Features
 
@@ -24,7 +24,7 @@ Baton is a desktop app for running local coding agents through a workflow you de
 
 - macOS
 - Node.js 22.5 or newer, and git
-- The [Antigravity CLI](https://antigravity.google) (`agy`), signed in
+- At least one agent harness, signed in: [pi](https://pi.dev) (`pi`) or the [Antigravity CLI](https://antigravity.google) (`agy`)
 - For pull requests: the [GitHub CLI](https://cli.github.com) (`gh`), signed in
 
 ## Getting started
@@ -37,7 +37,7 @@ npm run dev
 ```
 
 1. Click **Choose a repository** and pick a local git repository. New boards start with Backlog → Plan → Build → Review → Done.
-2. Open **⚙ Settings** to check that Baton found `agy` and that it is signed in.
+2. Open **⚙ Settings** to check that Baton found your harness (`pi` or `agy`) and that it is signed in. New boards use the first one listed; change it per column.
 3. Add a card to **Backlog** and drag it into **Plan**. Click the card to watch the session.
 4. Click **⚙** on a column to change its harness, model, permissions, prompt, or where cards go on success or failure.
 
@@ -62,7 +62,7 @@ Baton appends a short protocol to every session's first message. The agent ends 
 ## Safety
 
 - **Full-auto columns run agents without permission prompts.** They can edit files and run any command. The worktree isolates git state, not your machine. Use full-auto only for repositories and prompts you trust.
-- **Read-only columns are enforced by the harness.** For Antigravity, every shell command, file write and MCP tool is denied, overriding your global allow-list. Anything other than an explicit full-auto setting falls back to read-only.
+- **Read-only columns are enforced by the harness.** For pi, only the `read`, `grep`, `find` and `ls` tools are enabled, with no MCP tools and no project extensions. For Antigravity, every shell command, file write and MCP tool is denied, overriding your global allow-list. Anything other than an explicit full-auto setting falls back to read-only.
 - **Local merges** only run when your main checkout is clean and on the base branch, and are aborted on conflict.
 - **Quitting** stops all agent sessions. Anything still running after a short grace period is killed.
 
@@ -75,7 +75,7 @@ Boards live in a SQLite database in the app's data folder (`~/Library/Applicatio
 ```bash
 npm test           # unit + integration tests (real git, fake agent harness)
 npm run typecheck
-npm run e2e        # real Antigravity sessions in a temp repo: needs `agy`, costs model usage
+npm run e2e        # real pi and Antigravity sessions in temp repos: needs `pi` and `agy`, costs model usage
 npm run icon       # regenerate build/icon.png and build/icon.icns from build/icon.svg
 ```
 
@@ -83,7 +83,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces fit together.
 
 ### Adding a harness
 
-A harness is one file implementing the `Harness` interface in [`src/main/harnesses/types.ts`](src/main/harnesses/types.ts): how to start a long-lived session process, encode a user turn on stdin, parse its JSON event stream, list models, and check sign-in. Add it to the list in [`src/main/harnesses/index.ts`](src/main/harnesses/index.ts), capture a sample session into `test/fixtures/`, and add a parser test like [`antigravity.test.ts`](src/main/harnesses/antigravity.test.ts). Settings, the column dialog and the runner all pick it up from the registry.
+A harness is one file implementing the `Harness` interface in [`src/main/harnesses/types.ts`](src/main/harnesses/types.ts): how to start a long-lived session process, encode a user turn on stdin, parse its JSON event stream, list models, and check sign-in. Add it to the list in [`src/main/harnesses/index.ts`](src/main/harnesses/index.ts), capture a sample session into `test/fixtures/`, and add a parser test like [`pi.test.ts`](src/main/harnesses/pi.test.ts). [`pi.ts`](src/main/harnesses/pi.ts) is a compact example of an RPC-style harness. Settings, the column dialog and the runner all pick it up from the registry.
 
 ## License
 
