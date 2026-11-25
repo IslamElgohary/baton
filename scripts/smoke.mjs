@@ -41,7 +41,8 @@ async function main() {
     if (r?.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? 'eval failed')
     return r?.result?.value
   }
-  for (let i = 0; i < 20 && !(await evaluate('document.body.innerText.includes("Baton")')); i++) await sleep(250)
+  // The page target can exist before <body> does: wait (tolerating a half-loaded page) until the app has rendered.
+  for (let i = 0; i < 40 && !(await evaluate('!!document.body?.innerText?.includes("Baton")')); i++) await sleep(250)
   const result = await evaluate(`(async () => ({
     title: document.title,
     sidebar: document.body.innerText.includes('Baton'),
