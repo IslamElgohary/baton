@@ -99,6 +99,16 @@ test('PR mode, standalone task: pushes the branch and opens a PR against main', 
   expect(sh(origin, 'branch', '--list', t.branch!)).toContain(t.branch!) // pushed
 })
 
+test('PR mode: a base branch deleted from origin (merged PR) fails with a readable reason, before pushing', async () => {
+  const { db, origin, finisher, gh, task } = setup('pr')
+  const id = await task('feat')
+  sh(origin, 'branch', '-D', 'main') // stands in for GitHub deleting a merged base
+  await expect(finisher.finish(id)).rejects.toThrow(/base branch "main" isn't on origin/)
+  expect(db.getTask(id).finish_error).toMatch(/Pick another base branch/)
+  expect(gh.some((a) => a[1] === 'create')).toBe(false)
+  expect(sh(origin, 'branch', '--list', db.getTask(id).branch!)).toBe('') // nothing pushed
+})
+
 test('PR mode, epic chain: the PR stacks on the blocker branch; once the blocker is merged it targets main', async () => {
   const { db, boardId, repo, origin, finisher, gh, task } = setup('pr')
   const epic = db.createEpic(boardId, 'E', 'd', '#000')

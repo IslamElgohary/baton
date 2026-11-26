@@ -4,7 +4,7 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { BoardData, Column, Epic, HarnessInfo, Task } from '../../shared/types'
 import { call } from './api'
 import type { Act } from './App'
@@ -126,12 +126,22 @@ export function Board({ data, setData, harnesses, act, epicFilter }: Props) {
 }
 
 function BoardHeader({ data: { board }, act }: { data: BoardData; act: Act }) {
+  const [branches, setBranches] = useState<string[]>([])
+  const loadBranches = () => act(call('listBranches', board.id)).then((b) => b && setBranches(b))
+  useEffect(() => { loadBranches() }, [board.id])
   return (
     <header className="flex items-center gap-3 border-b border-neutral-200 px-4 py-2 dark:border-neutral-800">
       <InlineEdit value={board.name} className="shrink-0 text-lg font-semibold" onSave={(v) => act(call('renameBoard', board.id, v))} />
       <span className="min-w-0 flex-1 truncate text-xs text-neutral-500" title={board.repo_path}>{board.repo_path}</span>
-      <span className="shrink-0 text-xs text-neutral-500">base:</span>
-      <InlineEdit value={board.base_branch} className="shrink-0 font-mono text-xs" onSave={(v) => act(call('updateBaseBranch', board.id, v))} />
+      <label className="flex shrink-0 items-center gap-1 text-xs text-neutral-500" title="Branch tasks start from and finish into">
+        base:
+        <select className="max-w-48 rounded border border-neutral-300 bg-transparent px-1 py-0.5 font-mono dark:border-neutral-700"
+          value={board.base_branch} onFocus={loadBranches}
+          onChange={(e) => act(call('updateBaseBranch', board.id, e.target.value))}>
+          {!branches.includes(board.base_branch) && <option value={board.base_branch}>{board.base_branch}{branches.length ? ' (missing)' : ''}</option>}
+          {branches.map((b) => <option key={b} value={b}>{b}</option>)}
+        </select>
+      </label>
       <label className="flex shrink-0 items-center gap-1 text-xs text-neutral-500" title="How finished tasks reach the base branch">
         finish:
         <select className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 dark:border-neutral-700" value={board.finish_mode}

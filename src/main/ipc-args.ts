@@ -35,6 +35,7 @@ export const ARGS: { [K in keyof Api]: Check[] } = {
   listBoards: [],
   getBoard: [id],
   newBoard: [],
+  listBranches: [id],
   renameBoard: [id, str],
   updateBaseBranch: [id, str],
   setFinishMode: [id, oneOf('merge', 'pr')],

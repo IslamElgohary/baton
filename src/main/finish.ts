@@ -115,6 +115,9 @@ export function createFinisher(d: FinisherDeps) {
         throw new Error('This repository has no "origin" remote, so a pull request cannot be opened. Switch the board to local merge, or add a remote.')
       }
       const stack = await prBase(t, board)
+      if (stack.base === board.base_branch && !(await d.git.remoteHasBranch(board.repo_path, stack.base))) {
+        throw new Error(`The board's base branch "${stack.base}" isn't on origin (merged and deleted?), so a pull request can't target it. Pick another base branch in the board header.`)
+      }
       await d.git.push(board.repo_path, t.branch)
       // Only an OPEN PR is reused (the push above updated it); after a merged/closed one, new work gets a new PR.
       const existing = await d.gh(['pr', 'view', t.branch, '--json', 'url,state'], board.repo_path)
