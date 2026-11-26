@@ -151,7 +151,7 @@ function BoardHeader({ data: { board }, act }: { data: BoardData; act: Act }) {
         </select>
       </label>
       <button className="btn-danger shrink-0 whitespace-nowrap" onClick={() => {
-        if (confirm(`Delete board "${board.name}" and all its tasks? Worktrees on disk are kept.`)) act(call('deleteBoard', board.id))
+        if (confirm(`Delete board "${board.name}" and all its tasks? Their worktree folders are removed (leftover work is committed to each branch first; branches stay).`)) act(call('deleteBoard', board.id))
       }}>Delete board</button>
     </header>
   )

@@ -253,6 +253,8 @@ export function createDb(file: string) {
     // tasks
     getTask: mustTask,
     createTask(boardId: number, columnId: number, title: string, description = ''): number {
+      if (get<{ board_id: number }>('SELECT board_id FROM columns WHERE id = ?', columnId)?.board_id !== boardId)
+        throw new Error('Column is not on this board')
       return Number(run('INSERT INTO tasks (board_id, column_id, position, title, description) VALUES (?, ?, ?, ?, ?)',
         boardId, columnId, taskIds(columnId).length, title, description).lastInsertRowid)
     },

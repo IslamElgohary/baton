@@ -86,6 +86,8 @@ test('remoteHasBranch: false only when origin lacks the branch, not when origin 
   sh(dir, 'remote', 'add', 'origin', origin); sh(dir, 'push', '-q', 'origin', 'main')
   expect(await git.remoteHasBranch(dir, 'main')).toBe(true)
   expect(await git.remoteHasBranch(dir, 'gone')).toBe(false)
+  sh(dir, 'push', '-q', 'origin', 'main:team/x')
+  expect(await git.remoteHasBranch(dir, 'x')).toBe(false) // not tail-matched against team/x
   sh(dir, 'remote', 'set-url', 'origin', `${dir}-nowhere.git`)
   expect(await git.remoteHasBranch(dir, 'gone')).toBe(true) // unknown: let the push report the real error
 })

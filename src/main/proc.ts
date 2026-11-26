@@ -4,9 +4,9 @@ import { delimiter, join } from 'node:path'
 import type { ExecResult } from './harnesses/types'
 
 /** execFile that never throws: returns the exit code and output. */
-export function exec(bin: string, args: string[], opts: { cwd?: string; timeoutMs?: number } = {}): Promise<ExecResult> {
+export function exec(bin: string, args: string[], opts: { cwd?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv } = {}): Promise<ExecResult> {
   return new Promise((resolve) => {
-    execFile(bin, args, { cwd: opts.cwd, timeout: opts.timeoutMs ?? 60_000, maxBuffer: 20 * 1024 * 1024 },
+    execFile(bin, args, { cwd: opts.cwd, env: opts.env, timeout: opts.timeoutMs ?? 60_000, maxBuffer: 20 * 1024 * 1024 },
       (err, stdout, stderr) => {
         const code = err ? (typeof err.code === 'number' ? err.code : 1) : 0
         resolve({ code, stdout: String(stdout), stderr: String(stderr || (err && !stdout ? err.message : '')) })
