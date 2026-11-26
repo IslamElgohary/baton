@@ -22,6 +22,17 @@ export function createGit(exec: Exec) {
       const r = await git(dir, 'symbolic-ref', '--short', 'HEAD')
       return r.code === 0 ? r.stdout.trim() : 'main'
     },
+    /** The remote's default branch (origin/HEAD) when it exists locally, else the checked-out one. */
+    async defaultBranch(dir: string): Promise<string> {
+      const r = await git(dir, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD')
+      const name = r.code === 0 ? r.stdout.trim().replace(/^origin\//, '') : ''
+      if (name && (await git(dir, 'rev-parse', '--verify', '--quiet', `refs/heads/${name}`)).code === 0) return name
+      const head = await git(dir, 'symbolic-ref', '--short', 'HEAD')
+      return head.code === 0 ? head.stdout.trim() : 'main'
+    },
+    /** Local branch names, most recently committed first. */
+    branches: async (repo: string) =>
+      (await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads')).stdout.split('\n').filter(Boolean),
     /** Changes in `dir` since it branched off `base`: committed + uncommitted, plus untracked file names. */
     async diff(dir: string, base: string): Promise<string> {
       const mb = (await git(dir, 'merge-base', base, 'HEAD')).stdout.trim() || base

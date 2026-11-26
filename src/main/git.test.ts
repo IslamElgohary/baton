@@ -64,3 +64,16 @@ test('freeBranch skips names that already exist', async () => {
   sh(dir, 'branch', 'baton/1-x'); sh(dir, 'branch', 'baton/1-x-2')
   expect(await git.freeBranch(dir, 'baton/1-x')).toBe('baton/1-x-3')
 })
+
+test('defaultBranch prefers origin/HEAD over the checked-out branch; branches lists local ones', async () => {
+  const git = createGit(exec)
+  const dir = repo()
+  sh(dir, 'checkout', '-qb', 'feature')
+  expect(await git.defaultBranch(dir)).toBe('feature') // no remote: the checked-out branch
+  const origin = `${dir}-origin.git`
+  execFileSync('git', ['init', '-q', '--bare', origin])
+  sh(dir, 'remote', 'add', 'origin', origin); sh(dir, 'push', '-q', 'origin', 'main')
+  sh(dir, 'remote', 'set-head', 'origin', 'main')
+  expect(await git.defaultBranch(dir)).toBe('main')
+  expect((await git.branches(dir)).sort()).toEqual(['feature', 'main'])
+})

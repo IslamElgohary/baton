@@ -57,8 +57,9 @@ export function createApi(d: ApiDeps) {
       if (!root) throw new Error(`${dir} is not inside a git repository`)
       // PRs need a remote: default to them when there is one, local merges otherwise.
       const mode: FinishMode = (await d.git.hasRemote(root)) ? 'pr' : 'merge'
-      return d.db.createBoard(basename(root), root, await d.git.currentBranch(root), d.harnesses[0]?.id ?? '', mode)
+      return d.db.createBoard(basename(root), root, await d.git.defaultBranch(root), d.harnesses[0]?.id ?? '', mode)
     },
+    listBranches: (id: number) => d.git.branches(d.db.getBoard(id).board.repo_path),
     renameBoard: (id: number, name: string) => d.db.renameBoard(id, name.trim() || 'Untitled'),
     async updateBaseBranch(id: number, branch: string) {
       const name = String(branch).trim()
