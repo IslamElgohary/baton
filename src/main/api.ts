@@ -146,6 +146,17 @@ export function createApi(d: ApiDeps) {
       if (!url || !/^https:\/\//.test(url)) throw new Error('This task has no pull request')
       return d.openExternal(url)
     },
+    /** Renderer input is untrusted: only http(s) URLs may reach shell.openExternal. */
+    openExternal(url: string) {
+      let protocol: string
+      try {
+        protocol = new URL(url).protocol
+      } catch {
+        throw new Error('Only http(s) links can be opened')
+      }
+      if (protocol !== 'http:' && protocol !== 'https:') throw new Error('Only http(s) links can be opened')
+      return d.openExternal(url)
+    },
     openWorktree(taskId: number) {
       const p = d.db.getTask(taskId).worktree_path
       if (!p) throw new Error('This task has no worktree yet')
