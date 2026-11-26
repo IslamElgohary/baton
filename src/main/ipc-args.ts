@@ -63,6 +63,7 @@ export const ARGS: { [K in keyof Api]: Check[] } = {
   removeWorktree: [id],
   getChanges: [id],
   openPr: [id],
+  openExternal: [str],
   openWorktree: [id],
   // epics
   createEpic: [id, str, opt(str), opt(color)],
