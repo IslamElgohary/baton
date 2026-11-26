@@ -41,7 +41,10 @@ export function EpicDialog({ epic, harnesses, act, onClose }: Props) {
   const savedDraft = JSON.stringify(epic.draft)
   useEffect(() => setDraft(JSON.parse(savedDraft)), [savedDraft]) // a finished breakdown delivers a new draft; refetches don't reset edits
 
-  const save = () => act(call('updateEpic', epic.id, { title, description, color }))
+  const save = () => act(call('updateEpic', epic.id, { title, description, color }).then(() => true))
+  async function saveAndClose() {
+    if (await save()) onClose()
+  }
   async function breakDown() {
     if (dirty) await save() // the agent reads the saved description
     await act(call('startBreakdown', epic.id, harness, model))
@@ -70,7 +73,7 @@ export function EpicDialog({ epic, harnesses, act, onClose }: Props) {
       footer={<>
         <button className="btn-danger" onClick={remove}>Delete epic</button>
         <div className="flex-1" />
-        <button className="btn-primary" disabled={!dirty} onClick={save}>Save</button>
+        <button className="btn-primary" disabled={!dirty} onClick={saveAndClose}>Save</button>
       </>}>
       <div className="flex flex-col gap-4">
         <div className="flex gap-3">
