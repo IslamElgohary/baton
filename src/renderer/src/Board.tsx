@@ -29,7 +29,7 @@ const tasksIn = (tasks: Task[], columnId: number) =>
   tasks.filter((t) => t.column_id === columnId).sort((a, b) => a.position - b.position)
 
 /** Same reordering the main process does, applied locally so the drop doesn't flicker. */
-function moveLocal(tasks: Task[], id: number, columnId: number, index: number): Task[] {
+export function moveLocal(tasks: Task[], id: number, columnId: number, index: number): Task[] {
   const moved = tasks.find((t) => t.id === id)!
   const target = tasksIn(tasks, columnId).filter((t) => t.id !== id)
   target.splice(index, 0, { ...moved, column_id: columnId })
