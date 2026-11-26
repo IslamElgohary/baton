@@ -97,3 +97,11 @@ test('saveSettings rejects out-of-range or malformed values and drops unknown ke
   api.saveSettings({ ...ok, extra: 'x', notifications: { ...notifications, extra: true } } as never)
   expect(db.getSettings()).toEqual(ok)
 })
+
+test('seenTask clears the attention mark', () => {
+  const { db, api, col, boardId } = setup()
+  const id = db.createTask(boardId, col.id, 't')
+  db.setTaskState(id, { attention: 'failed' })
+  api.seenTask(id)
+  expect(db.getTask(id).attention).toBeNull()
+})

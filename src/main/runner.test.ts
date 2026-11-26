@@ -184,12 +184,16 @@ test('notifies when a card stops: done or failed, not between steps and not when
   runner.onEnter(a)
   await until(() => db.getTask(a).column_id === review.id)
   expect(notes).toEqual(['Done: a'])
+  expect(db.getTask(a).attention).toBe('done') // the card is marked too
+  db.enqueue(a, false)
+  expect(db.getTask(a).attention).toBeNull() // running it again clears the mark
 
   db.updateColumn(plan.id, { trigger: trigger('fail') })
   const b = db.createTask(boardId, plan.id, 'b')
   runner.onEnter(b)
   await until(() => db.getTask(b).status === 'failed')
   expect(notes).toEqual(['Done: a', 'Failed: b'])
+  expect(db.getTask(b).attention).toBe('failed')
 
   db.updateColumn(plan.id, { trigger: trigger('hang', 'go', null, backlog.id) })
   const c = db.createTask(boardId, plan.id, 'c')
@@ -198,6 +202,7 @@ test('notifies when a card stops: done or failed, not between steps and not when
   runner.stop(c)
   await until(() => db.getTask(c).status === 'failed')
   expect(notes).toEqual(['Done: a', 'Failed: b'])
+  expect(db.getTask(c).attention).toBeNull()
 })
 
 test('a leftover process holding stdout does not keep the session open', async () => {
@@ -237,8 +242,10 @@ test('[QUESTION] pauses the session; the answer resumes it and artifacts are sav
   const [paused] = db.listRuns(id)
   expect(paused).toMatchObject({ question: 'Which color?', ended_at: null })
   expect(events.some((e) => e.type === 'session' && e.event.kind === 'question')).toBe(true)
+  expect(db.getTask(id).attention).toBe('question')
 
   runner.answer(id, 'blue')
+  expect(db.getTask(id).attention).toBeNull()
   await until(() => db.getTask(id).column_id === build.id && db.getTask(id).status === 'succeeded')
   const runs = db.listRuns(id)
   expect(runs[1]).toMatchObject({ id: paused.id, ok: 1, question: null }) // same session, resumed

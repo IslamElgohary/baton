@@ -63,6 +63,17 @@ export interface Task {
   finish_error: string | null
   /** Set when archived from a done column: hidden there, still resolves dependents. Moving the card clears it. */
   archived_at: string | null
+  /** Something happened the user hasn't looked at yet (cleared when they open the card or it runs again). */
+  attention: Attention | null
+}
+
+export type Attention = 'question' | 'done' | 'failed'
+
+/** A board in the sidebar list, with how many of its cards want the user's attention. */
+export interface BoardSummary extends Board {
+  attention: number
+  /** How many of those are questions (the agent is waiting for an answer). */
+  questions: number
 }
 
 /** A task proposed by "Break down", before the user approves it. `blockedBy` = indexes into the draft. */

@@ -241,6 +241,7 @@ export function createRunner(d: RunnerDeps) {
         // Session stays open (ended_at NULL) until the user answers; it doesn't hold a concurrency slot.
         d.db.setRunQuestion(a.runId, o.text)
         d.db.setStatus(taskId, 'waiting')
+        d.db.setTaskState(taskId, { attention: 'question' })
         d.notify?.('question', `Question: ${d.db.getTask(taskId).title}`, o.text)
       } else {
         const ok = o.type === 'done'
@@ -259,6 +260,7 @@ export function createRunner(d: RunnerDeps) {
           // The card stops here and waits for the user, unless it moved on to another step or to a finish
           // column (the finisher notifies). Stopped by the user: they know.
           if (!a.killReason && !to?.trigger && !to?.finish_on_enter) {
+            d.db.setTaskState(taskId, { attention: ok ? 'done' : 'failed' })
             d.notify?.(ok ? 'done' : 'failed', `${ok ? 'Done' : 'Failed'}: ${task.title}`, `${d.db.getColumn(a.columnId)?.name ?? ''}: ${o.text}`)
           }
         }

@@ -205,6 +205,8 @@ test('auto-finish notifies its result; a finish the user started does not', asyn
   await expect(finisher.finish(await task('broken'), { auto: true })).rejects.toThrow()
   expect(notes).toHaveLength(2)
   expect(notes[0]).toBe('Finished: feat | Merged into main')
+  expect(db.getBoard(boardId).tasks.map((t) => [t.title, t.attention]))
+    .toEqual([['manual', null], ['feat', 'done'], ['never-ran', null], ['broken', 'failed']])
   expect(notes[1]).toMatch(/^Couldn't finish: broken \| /)
 })
 
