@@ -58,12 +58,42 @@ test('deleteBoard stops the breakdown sessions of its epics', async () => {
   expect(stopped).toEqual([epic])
 })
 
+test('startBrainstorm and answerBreakdown delegate to the breakdown session', () => {
+  const { db, boardId } = setup()
+  const epic = db.createEpic(boardId, 'e', 'd', '#000000')
+  const started: unknown[][] = []
+  const answers: unknown[][] = []
+  const api = createApi({
+    db, harnesses: [fake],
+    runner: { pump: () => {}, onEnter: () => {} } as never,
+    breakdowns: {
+      startBrainstorm: (...a: unknown[]) => started.push(a),
+      answer: (...a: unknown[]) => answers.push(a)
+    } as never,
+    finisher: {} as never, git: {} as never,
+    exec: async () => ({ code: 0, stdout: '', stderr: '' }), resolveBin: () => null,
+    pickDirectory: async () => null, openPath: async () => {}, openExternal: async () => {}, openTerminal: async () => {}
+  })
+
+  api.startBrainstorm(epic, 'fake', 'model-x')
+  expect(started).toEqual([[epic, 'fake', 'model-x']])
+
+  expect(() => api.answerBreakdown(epic, '')).toThrow(/Answer is empty/)
+  expect(() => api.answerBreakdown(epic, '   ')).toThrow(/Answer is empty/)
+  expect(answers).toEqual([])
+
+  api.answerBreakdown(epic, '  use sqlite  ')
+  expect(answers).toEqual([[epic, 'use sqlite']])
+})
+
 test('saveSettings rejects out-of-range or malformed values and drops unknown keys', () => {
   const { api, db } = setup()
-  const ok = { maxConcurrency: 2, idleTimeoutMin: 5, maxTurns: 4, binPaths: { fake: '/bin/x' } }
-  for (const bad of [{ ...ok, maxConcurrency: NaN }, { ...ok, maxConcurrency: 0 }, { ...ok, maxTurns: 1.5 }, { ...ok, binPaths: { fake: 1 } }, null]) {
+  const notifications = { question: true, done: false, failed: true, finished: false }
+  const ok = { maxConcurrency: 2, idleTimeoutMin: 5, maxTurns: 4, binPaths: { fake: '/bin/x' }, notifications }
+  for (const bad of [{ ...ok, maxConcurrency: NaN }, { ...ok, maxConcurrency: 0 }, { ...ok, maxTurns: 1.5 }, { ...ok, binPaths: { fake: 1 } },
+    { ...ok, notifications: null }, { ...ok, notifications: { ...notifications, done: 'no' } }, { ...ok, notifications: { question: true } }, null]) {
     expect(() => api.saveSettings(bad as never)).toThrow(/Invalid settings/)
   }
-  api.saveSettings({ ...ok, extra: 'x' } as never)
+  api.saveSettings({ ...ok, extra: 'x', notifications: { ...notifications, extra: true } } as never)
   expect(db.getSettings()).toEqual(ok)
 })

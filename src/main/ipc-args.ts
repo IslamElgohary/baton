@@ -68,6 +68,8 @@ export const ARGS: { [K in keyof Api]: Check[] } = {
   deleteEpic: [id],
   getBreakdown: [id],
   startBreakdown: [id, str, str],
+  startBrainstorm: [id, str, str],
+  answerBreakdown: [id, str],
   stopBreakdown: [id],
   discardDraft: [id],
   approveDraft: [id, arrayOf(draftTask)],

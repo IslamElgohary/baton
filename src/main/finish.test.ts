@@ -29,8 +29,9 @@ function setup(mode: FinishMode) {
   const gh: string[][] = []
   let active = new Set<number>()
   const prs = new Map<string, object>() // `gh pr view <key>` answers
+  const notes: string[] = [] // notifications: "title | body"
   const finisher = createFinisher({
-    db, git, push: () => {}, isActive: (id) => active.has(id), activeWaitMs: 300,
+    db, git, push: () => {}, notify: (_kind, t, b) => notes.push(`${t} | ${b}`), isActive: (id) => active.has(id), activeWaitMs: 300,
     gh: async (args) => {
       gh.push(args)
       if (args[0] === 'pr' && args[1] === 'view') {
@@ -55,7 +56,7 @@ function setup(mode: FinishMode) {
     for (const s of ['queued', 'running', 'succeeded'] as const) db.setStatus(id, s)
     return id
   }
-  return { db, boardId, repo, origin, finisher, gh, prs, task, git, setActive: (s: Set<number>) => { active = s } }
+  return { db, boardId, repo, origin, finisher, gh, prs, task, git, notes, setActive: (s: Set<number>) => { active = s } }
 }
 
 test('merge mode: commits leftover work, merges into main, removes the worktree, keeps the branch', async () => {
@@ -193,6 +194,18 @@ test('auto-finish waits for a just-killed session to exit (card dragged into Don
   setTimeout(() => setActive(new Set()), 100) // session exits shortly after the kill
   await finisher.finish(id, { auto: true })
   expect(db.getTask(id).merged_at).not.toBeNull()
+})
+
+test('auto-finish notifies its result; a finish the user started does not', async () => {
+  const { db, finisher, task, notes, boardId } = setup('merge')
+  await finisher.finish(await task('manual'))
+  await finisher.finish(await task('feat'), { auto: true })
+  await finisher.finish(db.createTask(boardId, db.getBoard(boardId).columns[0].id, 'never-ran'), { auto: true })
+  db.updateBoardBase(boardId, 'gone')
+  await expect(finisher.finish(await task('broken'), { auto: true })).rejects.toThrow()
+  expect(notes).toHaveLength(2)
+  expect(notes[0]).toBe('Finished: feat | Merged into main')
+  expect(notes[1]).toMatch(/^Couldn't finish: broken \| /)
 })
 
 test('cleanup with waitForStop waits for a just-killed session, then removes the worktree (deleting a task)', async () => {

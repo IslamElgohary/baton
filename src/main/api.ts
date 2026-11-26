@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 import { existsSync } from 'node:fs'
-import type { Column, DraftTask, FinishMode, HarnessInfo, Settings, Trigger } from '../shared/types'
+import { NOTIFY_KINDS, type Column, type DraftTask, type FinishMode, type HarnessInfo, type Settings, type Trigger } from '../shared/types'
 import { compactDraft, type Breakdowns } from './breakdown'
 import type { Finisher } from './finish'
 import type { Db } from './db'
@@ -157,6 +157,11 @@ export function createApi(d: ApiDeps) {
     },
     getBreakdown: (epicId: number) => d.breakdowns.get(epicId),
     startBreakdown: (epicId: number, harness: string, model: string) => d.breakdowns.start(epicId, harness, model),
+    startBrainstorm: (epicId: number, harness: string, model: string) => d.breakdowns.startBrainstorm(epicId, harness, model),
+    answerBreakdown(epicId: number, text: string) {
+      if (!text.trim()) throw new Error('Answer is empty')
+      d.breakdowns.answer(epicId, text.trim())
+    },
     stopBreakdown: (epicId: number) => d.breakdowns.stop(epicId),
     discardDraft: (epicId: number) => d.db.setEpicDraft(epicId, null),
     /** Create the (possibly edited) draft's tasks in the first column. */
@@ -173,10 +178,12 @@ export function createApi(d: ApiDeps) {
     saveSettings(s: Settings) {
       const int = (v: unknown, min: number, max: number) => Number.isInteger(v) && (v as number) >= min && (v as number) <= max
       if (!s || !int(s.maxConcurrency, 1, 16) || !int(s.idleTimeoutMin, 1, 1440) || !int(s.maxTurns, 1, 100)
-        || typeof s.binPaths !== 'object' || s.binPaths === null || Object.values(s.binPaths).some((v) => typeof v !== 'string')) {
+        || typeof s.binPaths !== 'object' || s.binPaths === null || Object.values(s.binPaths).some((v) => typeof v !== 'string')
+        || typeof s.notifications !== 'object' || s.notifications === null || NOTIFY_KINDS.some((k) => typeof s.notifications[k] !== 'boolean')) {
         throw new Error('Invalid settings')
       }
-      d.db.saveSettings({ maxConcurrency: s.maxConcurrency, idleTimeoutMin: s.idleTimeoutMin, maxTurns: s.maxTurns, binPaths: s.binPaths })
+      const notifications = Object.fromEntries(NOTIFY_KINDS.map((k) => [k, s.notifications[k]])) as Settings['notifications']
+      d.db.saveSettings({ maxConcurrency: s.maxConcurrency, idleTimeoutMin: s.idleTimeoutMin, maxTurns: s.maxTurns, binPaths: s.binPaths, notifications })
       harnessCache = null
     },
     async listHarnesses(refresh = false): Promise<HarnessInfo[]> {

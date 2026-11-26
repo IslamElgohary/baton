@@ -199,3 +199,11 @@ test('upgrade moves session events from the old text blob into run_events', () =
   db.appendEvent(run, { kind: 'info', text: 'y' })
   expect(db.runEvents(run).at(-1)).toEqual({ kind: 'info', text: 'y' })
 })
+
+test('settings saved before notification switches existed get them all on', () => {
+  const db = createDb(':memory:')
+  db.saveSettings({ maxConcurrency: 2, idleTimeoutMin: 5, maxTurns: 4, binPaths: {} })
+  expect(db.getSettings().notifications).toEqual({ question: true, done: true, failed: true, finished: true })
+  db.saveSettings({ notifications: { done: false } as never })
+  expect(db.getSettings().notifications).toEqual({ question: true, done: false, failed: true, finished: true })
+})

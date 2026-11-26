@@ -93,7 +93,10 @@ const TASKS = `SELECT t.*, (SELECT count(*) FROM artifacts a WHERE a.task_id = t
   (SELECT group_concat(blocked_by_id) FROM task_deps d WHERE d.task_id = t.id) AS blocked_by,
   EXISTS (${UNRESOLVED_BLOCKER}) AS blocked, ${resolved('t')} AS resolved FROM tasks t`
 
-const DEFAULT_SETTINGS: Settings = { maxConcurrency: 3, idleTimeoutMin: 10, maxTurns: 8, binPaths: {} }
+const DEFAULT_SETTINGS: Settings = {
+  maxConcurrency: 3, idleTimeoutMin: 10, maxTurns: 8, binPaths: {},
+  notifications: { question: true, done: true, failed: true, finished: true }
+}
 
 /** Default columns for a new board. Triggers use `harness` (the first registered one). Each ⚡ column sends successes to the next column. */
 function defaultColumns(harness: string): { name: string; is_done?: number; trigger?: Trigger }[] {
@@ -178,9 +181,11 @@ export function createDb(file: string) {
     // settings
     getSettings(): Settings {
       const row = get<{ value: string }>("SELECT value FROM settings WHERE key = 'app'")
-      return { ...DEFAULT_SETTINGS, ...(row ? JSON.parse(row.value) : {}) }
+      const saved: Partial<Settings> = row ? JSON.parse(row.value) : {}
+      return { ...DEFAULT_SETTINGS, ...saved, notifications: { ...DEFAULT_SETTINGS.notifications, ...saved.notifications } }
     },
-    saveSettings(s: Settings) {
+    /** Missing keys fall back to the defaults. */
+    saveSettings(s: Partial<Settings>) {
       run("INSERT INTO settings (key, value) VALUES ('app', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         JSON.stringify(s))
     },
