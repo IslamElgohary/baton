@@ -61,11 +61,13 @@ You still need an agent harness installed and signed in (see below). Baton finds
 ## Requirements
 
 - macOS, or Linux with a desktop session (experimental)
-- Node.js 22.5 or newer, and git
+- git
 - At least one agent harness, signed in: [Claude Code](https://code.claude.com) (`claude`), [pi](https://pi.dev) (`pi`) or the [Antigravity CLI](https://antigravity.google) (`agy`)
 - For pull requests: the [GitHub CLI](https://cli.github.com) (`gh`), signed in
 
 ## Getting started
+
+Installed the DMG? Open Baton and start at step 1. To run from source instead (needs Node.js 22.5 or newer):
 
 ```bash
 git clone https://github.com/IslamElgohary/baton.git
@@ -75,7 +77,7 @@ npm run dev
 ```
 
 1. Click **Choose a repository** and pick a local git repository. New boards start with Backlog → Plan → Build → Review → Done.
-2. Open **⚙ Settings** to check that Baton found your harness (`claude`, `pi` or `agy`) and that it is signed in. New boards use the first one listed; change it per column.
+2. Open **⚙ Settings** to check that Baton found your harness (`claude`, `pi` or `agy`) and that it is signed in. New boards use the first one listed (Claude Code); change it per column.
 3. Add a card to **Backlog** and drag it into **Plan**. Click the card to watch the session.
 4. Click **⚙** on a column to change its harness, model, permissions, prompt, or where cards go on success or failure.
 

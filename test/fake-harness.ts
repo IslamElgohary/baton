@@ -8,6 +8,8 @@ import type { Harness, ParsedEvent } from '../src/main/harnesses/types'
  */
 const FAKE = `
 const [scenario, resume] = process.argv.slice(1)
+// Before any output: the runner may signal as soon as it sees the session id.
+if (scenario === 'stubborn') process.on('SIGTERM', () => {})
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n')
 out({ t: 'session', v: resume || 'sess-' + process.pid })
 if (resume) out({ t: 'text', v: 'resumed:' + resume })
@@ -44,7 +46,6 @@ process.stdin.on('data', (c) => {
   }
 })
 process.stdin.on('end', () => process.exit(0))
-if (scenario === 'stubborn') process.on('SIGTERM', () => {})
 `
 
 export const fake: Harness = {
