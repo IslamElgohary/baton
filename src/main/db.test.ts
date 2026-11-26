@@ -53,16 +53,21 @@ test('deleting a non-empty column is refused; columns renumber', () => {
     .toEqual([['Backlog', 0], ['Build', 1], ['Review', 2], ['Done', 3]])
 })
 
-test('recover closes cut-off runs and returns queued tasks', () => {
+test('recover closes cut-off runs; the queue survives, first in first out', () => {
   const { db, id, cols } = setup()
   const t1 = db.createTask(id, cols[1].id, 'running')
   const t2 = db.createTask(id, cols[1].id, 'queued')
+  const t3 = db.createTask(id, cols[1].id, 'answered')
   db.setTaskState(t1, { status: 'running' })
-  db.setTaskState(t2, { status: 'queued' })
+  db.enqueue(t3, true, 'blue')
+  db.enqueue(t2, false)
   const r = db.createRun({ task_id: t1, column_id: cols[1].id, harness: 'h', model: '' })
-  expect(db.recover()).toEqual([t2])
+  db.recover()
   expect(db.getTask(t1).status).toBe('failed')
   expect(db.listRuns(t1)[0]).toMatchObject({ id: r, ok: 0 })
+  expect(db.queued()).toEqual([{ taskId: t3, resume: true, message: 'blue' }, { taskId: t2, resume: false, message: undefined }])
+  db.enqueue(t3, false) // re-queued: goes to the back, old answer dropped
+  expect(db.queued()).toEqual([{ taskId: t2, resume: false, message: undefined }, { taskId: t3, resume: false, message: undefined }])
 })
 
 test('ids of deleted tasks are not reused (worktree paths are derived from them)', () => {

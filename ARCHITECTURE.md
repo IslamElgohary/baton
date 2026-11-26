@@ -55,7 +55,7 @@ Each session runs in its own process group. Stop, card moves and idle timeouts s
 
 ## Runner
 
-`runner.ts` holds an in-memory queue and the active sessions (one per task).
+`runner.ts` holds the active sessions (one per task). The queue is the database: tasks with status `queued`, first in first out, each with what to send when it starts (a fresh run, "Run again", or the user's answer).
 
 1. **A card enters a ⚡ column.** It is queued. The queue starts tasks up to the parallel-runs limit, skipping blocked ones.
 2. **A session starts.**
@@ -68,7 +68,7 @@ Each session runs in its own process group. Stop, card moves and idle timeouts s
 4. **Dependencies resolve.** A blocker is resolved once its latest session succeeded or it sits in a done column.
    - Queued dependents start.
    - Dependents flagged *auto-start* (they were given blockers) move from a column without a trigger to the next ⚡ column.
-5. **After a restart,** interrupted sessions are marked failed, queued tasks are queued again, and sessions paused on a question stay paused.
+5. **After a restart,** interrupted sessions are marked failed. Queued tasks (including answers not yet sent) start again, and sessions paused on a question stay paused.
 
 ## Finishing
 
