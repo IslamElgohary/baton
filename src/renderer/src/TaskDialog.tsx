@@ -43,6 +43,10 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
     })
   }, [task.id, act])
 
+  async function save() {
+    if (await act(call('updateTask', task.id, { title, description }).then(() => true))) onClose()
+  }
+
   async function remove() {
     if (!confirm(`Delete task "${task.title}"?`)) return
     if (await act(call('deleteTask', task.id).then(() => true))) onClose()
@@ -55,7 +59,7 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
         <div className="flex-1" />
         {busy && <button className="btn" onClick={() => act(call('stopTask', task.id))}>■ Stop</button>}
         {!busy && column?.trigger && <button className="btn" onClick={() => act(call('retryTask', task.id))}>↻ Continue “{column.name}” session</button>}
-        <button className="btn-primary" disabled={!dirty} onClick={() => act(call('updateTask', task.id, { title, description }))}>Save</button>
+        <button className="btn-primary" disabled={!dirty} onClick={save}>Save</button>
       </>}>
       <div className="flex flex-col gap-4">
         {question && <AnswerBox question={question} onSend={(text) => act(call('answerQuestion', task.id, text))} />}
