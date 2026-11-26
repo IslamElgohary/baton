@@ -6,7 +6,7 @@ import { expect, test } from 'vitest'
 import type { PushEvent, Trigger } from '../shared/types'
 import { createDb } from './db'
 import { fake } from '../../test/fake-harness'
-import { createRunner, render } from './runner'
+import { createRunner, render, type RunnerDeps } from './runner'
 import { CONTINUE_PROMPT, extractArtifacts, markerOf } from './session'
 
 test('render fills known vars and blanks unknown ones', () => {
@@ -46,7 +46,7 @@ function setup(o: { maxConcurrency?: number; maxTurns?: number } = {}) {
   const events: PushEvent[] = []
   const root = mkdtempSync(join(tmpdir(), 'baton-runner-'))
   const merges: [string, string][] = [] // [worktree, branch]
-  const runner = createRunner({
+  const deps: RunnerDeps = {
     db, harnesses: [fake], spawn,
     git: {
       ensureWorktree: async (_r, _b, _br, dir) => void mkdirSync(dir, { recursive: true }),
@@ -60,10 +60,11 @@ function setup(o: { maxConcurrency?: number; maxTurns?: number } = {}) {
     resolveBin: () => process.execPath,
     worktreeRoot: root,
     push: (e) => events.push(e)
-  })
+  }
+  const runner = createRunner(deps)
   const trigger = (model: string, prompt = 'go', onSuccess: number | null = null, onFailure: number | null = null): Trigger =>
     ({ harness: 'fake', model, permission: 'read', prompt, onSuccess, onFailure })
-  return { db, boardId, backlog, plan, build, review, runner, events, trigger, merges, root }
+  return { db, boardId, backlog, plan, build, review, runner, events, trigger, merges, root, restart: () => createRunner(deps) }
 }
 
 const until = async (cond: () => boolean, ms = 5000) => {
@@ -193,6 +194,30 @@ test('[QUESTION] pauses the session; the answer resumes it and artifacts are sav
   expect(db.listArtifacts(id).map((a) => [a.name, a.content])).toEqual([['choice.md', 'color: blue']])
   expect(db.getTask(id).artifacts).toBe(1)
   expect(runs[0].summary).toBe('saw color: blue') // next step gets the artifact as a variable
+})
+
+test('the queue lives in the database: an answer queued at quit runs after a restart', async () => {
+  const { db, boardId, plan, build, runner, trigger, restart } = setup({ maxConcurrency: 1 })
+  db.updateColumn(plan.id, { trigger: trigger('ask') })
+  db.updateColumn(build.id, { trigger: trigger('hang') })
+  const id = db.createTask(boardId, plan.id, 'x')
+  runner.onEnter(id)
+  await until(() => db.getTask(id).status === 'waiting')
+  const busy = db.createTask(boardId, build.id, 'busy')
+  runner.onEnter(busy) // takes the only slot
+  runner.answer(id, 'blue')
+  expect(db.getTask(id).status).toBe('queued')
+
+  runner.killAll() // quit: the freed slot must not start queued work
+  await until(() => !runner.isActive(busy))
+  expect(db.getTask(id).status).toBe('queued')
+
+  db.recover()
+  restart().pump()
+  await until(() => db.getTask(id).status === 'succeeded')
+  const [run] = db.listRuns(id)
+  expect(run.events).toContainEqual({ kind: 'user', text: 'blue' }) // same session, resumed with the answer
+  expect(db.listRuns(id)).toHaveLength(1)
 })
 
 test('moving a waiting card closes the paused session; stop on a waiting card fails it', async () => {

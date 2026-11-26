@@ -42,16 +42,8 @@ interface Active {
   move: boolean
 }
 
-interface Queued {
-  taskId: number
-  /** Continue this column's previous session instead of starting a new one. */
-  resume: boolean
-  /** First turn to send when resuming (the user's answer). Default: re-run the column prompt. */
-  message?: string
-}
-
 export function createRunner(d: RunnerDeps) {
-  const queue: Queued[] = []
+  type Queued = ReturnType<Db['queued']>[number] // the queue is the tasks table (status 'queued')
   const active = new Map<number, Active>() // taskId → session
 
   const changed = () => d.push({ type: 'changed' })
@@ -64,24 +56,14 @@ export function createRunner(d: RunnerDeps) {
     a.stop?.(reason)
   }
 
-  function dequeue(taskId: number) {
-    const i = queue.findIndex((q) => q.taskId === taskId)
-    if (i >= 0) queue.splice(i, 1)
-  }
-
-  function enqueue(q: Queued) {
-    dequeue(q.taskId)
-    d.db.setTaskState(q.taskId, { status: 'queued' })
-    queue.push(q)
-  }
+  let closing = false // app quitting: start nothing new; queued tasks stay queued for the next launch
 
   function enter(taskId: number, resume: boolean) {
     kill(taskId, 'Card moved while running', false)
-    dequeue(taskId)
     const task = d.db.getTask(taskId)
     if (!resume) d.db.closeOpenRuns(taskId, 'Card moved before the question was answered')
     const col = d.db.getColumn(task.column_id)
-    if (col?.trigger) enqueue({ taskId, resume })
+    if (col?.trigger) d.db.enqueue(taskId, resume)
     else if (['queued', 'running', 'waiting'].includes(task.status)) d.db.setTaskState(taskId, { status: 'idle' })
     changed()
     if (col?.finish_on_enter && !col.trigger) d.onFinishColumn?.(taskId)
@@ -112,13 +94,14 @@ export function createRunner(d: RunnerDeps) {
   }
 
   function pump() {
+    if (closing) return
     advanceReady()
     const max = Math.max(1, d.db.getSettings().maxConcurrency)
     while (active.size < max) {
       // Skip tasks whose previous session is still shutting down, and tasks whose blockers aren't done.
-      const i = queue.findIndex((q) => !active.has(q.taskId) && !d.db.isBlocked(q.taskId))
-      if (i < 0) break
-      const [q] = queue.splice(i, 1)
+      const q = d.db.queued().find((q) => !active.has(q.taskId) && !d.db.isBlocked(q.taskId))
+      if (!q) break
+      d.db.setTaskState(q.taskId, { status: 'running' }) // off the queue now, even if start() throws early
       start(q).catch((e) => console.error('session start failed', e))
     }
   }
@@ -281,7 +264,7 @@ export function createRunner(d: RunnerDeps) {
     /** Send the user's answer to the session paused on a question. */
     answer(taskId: number, text: string) {
       if (!d.db.pendingRun(taskId)) throw new Error('This task is not waiting for an answer')
-      enqueue({ taskId, resume: true, message: text })
+      d.db.enqueue(taskId, true, text)
       changed()
       pump()
     },
@@ -289,7 +272,6 @@ export function createRunner(d: RunnerDeps) {
     pump,
     /** Stop a running, queued or waiting task; it stays in its column, marked failed. */
     stop(taskId: number) {
-      dequeue(taskId)
       const a = active.get(taskId)
       if (a) {
         a.move = false
@@ -301,23 +283,13 @@ export function createRunner(d: RunnerDeps) {
         changed()
       }
     },
-    /** Before deleting a task: drop it from the queue and kill its session without routing. */
+    /** Before deleting a task: kill its session without routing (deleting the row takes it off the queue). */
     forget(taskId: number) {
-      dequeue(taskId)
       kill(taskId, 'Task deleted', false)
-    },
-    /** Re-enqueue tasks left queued from the previous app run. */
-    resume(taskIds: number[]) {
-      for (const taskId of taskIds) {
-        // An answer queued before the restart is lost (queue is in memory): ask again.
-        if (d.db.pendingRun(taskId)) d.db.setTaskState(taskId, { status: 'waiting' })
-        else queue.push({ taskId, resume: false })
-      }
-      pump()
     },
     /** App quitting: SIGTERM every session; `force` = SIGKILL whatever is still alive. */
     killAll({ force = false } = {}) {
-      queue.length = 0
+      closing = true
       for (const [id, a] of active) force ? a.forceStop?.() : kill(id, 'Interrupted (app closed)', false)
     },
     activeCount: () => active.size,

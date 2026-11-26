@@ -61,6 +61,12 @@ const STEPS: Step[] = [
             INSERT INTO run_events (run_id, event) SELECT run_id, line FROM split WHERE line != '';
             UPDATE runs SET events = '';`)
     }
+  },
+  // 3: the run queue lives in the database (it used to be in memory, so a queued answer was lost on restart)
+  ({ addColumn }) => {
+    addColumn('tasks', 'queued_at', 'INTEGER')
+    addColumn('tasks', 'queued_resume', 'INTEGER NOT NULL DEFAULT 0')
+    addColumn('tasks', 'queued_message', 'TEXT')
   }
 ]
 
@@ -408,15 +414,24 @@ export function createDb(file: string) {
       return get<{ summary: string }>('SELECT summary FROM runs WHERE task_id = ? AND ok = 1 ORDER BY id DESC LIMIT 1',
         taskId)?.summary ?? ''
     },
-    /** After a restart: close runs that were cut off, return ids of tasks still waiting in the queue. */
-    recover(): number[] {
-      return tx(() => {
+    /** After a restart: close runs that were cut off. Queued tasks stay queued. */
+    recover() {
+      tx(() => {
         // Sessions paused on a question stay open: the answer resumes them.
         run("UPDATE runs SET ended_at = datetime('now'), ok = 0, summary = 'Interrupted (app closed)' WHERE ended_at IS NULL AND question IS NULL")
         run("UPDATE tasks SET status = 'failed' WHERE status = 'running'")
-        return all<{ id: number }>("SELECT id FROM tasks WHERE status = 'queued' ORDER BY id").map((r) => r.id)
       })
-    }
+    },
+
+    // queue: tasks with status 'queued', first in first out
+    /** `resume`: continue the column's last session; `message`: its first turn (the user's answer). */
+    enqueue(taskId: number, resume: boolean, message: string | null = null) {
+      run(`UPDATE tasks SET status = 'queued', queued_at = (SELECT COALESCE(MAX(queued_at), 0) + 1 FROM tasks),
+           queued_resume = ?, queued_message = ? WHERE id = ?`, resume ? 1 : 0, message, taskId)
+    },
+    queued: () => all<{ id: number; queued_resume: number; queued_message: string | null }>(
+      "SELECT id, queued_resume, queued_message FROM tasks WHERE status = 'queued' ORDER BY queued_at, id"
+    ).map((r) => ({ taskId: r.id, resume: r.queued_resume === 1, message: r.queued_message ?? undefined }))
   }
 }
 

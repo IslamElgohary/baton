@@ -96,7 +96,8 @@ app.whenReady().then(async () => {
     })
   }
 
-  runner.resume(db.recover())
+  db.recover()
+  runner.pump() // tasks still queued from the last run
   // Quit: SIGTERM all agent sessions, give them a moment, then SIGKILL what's left (they run in their own
   // process groups and would otherwise outlive the app — a full-auto agent keeps editing files).
   let quitting = false
