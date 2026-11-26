@@ -12,6 +12,8 @@ export interface FinisherDeps {
   /** True while an agent session is running for the task. */
   isActive: (taskId: number) => boolean
   push: (e: PushEvent) => void
+  /** Shows a system notification (auto-finishes only: a finish the user started shows its result in the app). */
+  notify?: (title: string, body: string) => void
   /** How long an auto-finish waits for a just-killed session to exit. */
   activeWaitMs?: number
 }
@@ -88,13 +90,14 @@ export function createFinisher(d: FinisherDeps) {
     ].filter(Boolean).join('\n\n')
   }
 
-  async function run(taskId: number, auto: boolean) {
+  /** Returns what happened, for the notification; null if there was nothing to finish. */
+  async function run(taskId: number, auto: boolean): Promise<string | null> {
     // Auto-finish (card entered a finish column): a session killed by that move may still be exiting.
     for (let waited = 0; auto && d.isActive(taskId) && waited < (d.activeWaitMs ?? 15_000); waited += 200) await sleep(200)
     // Re-finishing is fine: new commits get merged again / pushed to the open PR.
     const t = d.db.getTask(taskId)
     if (!t.branch) {
-      if (auto) return // never ran: nothing to finish, not an error
+      if (auto) return null // never ran: nothing to finish, not an error
       throw new Error('This task has no branch yet: it never ran an agent session, so there is nothing to finish.')
     }
     if (d.isActive(taskId)) throw new Error('An agent session is still running for this task. Stop it or let it finish first.')
@@ -137,6 +140,7 @@ export function createFinisher(d: FinisherDeps) {
       await d.git.removeWorktree(board.repo_path, worktree)
       d.db.setTaskState(taskId, { worktree_path: null })
     }
+    return board.finish_mode === 'merge' ? `Merged into ${board.base_branch}` : `Pull request: ${d.db.getTask(taskId).pr_url}`
   }
 
   return {
@@ -147,12 +151,17 @@ export function createFinisher(d: FinisherDeps) {
     finish(taskId: number, { auto = false } = {}): Promise<void> {
       const running = inflight.get(taskId)
       if (running) return running
-      const repo = d.db.getBoard(d.db.getTask(taskId).board_id).board.repo_path
+      const task = d.db.getTask(taskId)
+      const repo = d.db.getBoard(task.board_id).board.repo_path
       const p = withRepoLock(repo, () => run(taskId, auto))
-        .then(() => { d.db.setTaskState(taskId, { finish_error: null }) })
+        .then((done) => {
+          d.db.setTaskState(taskId, { finish_error: null })
+          if (auto && done) d.notify?.(`Finished: ${task.title}`, done)
+        })
         .catch((e) => {
           const msg = e instanceof Error ? e.message : String(e)
           d.db.setTaskState(taskId, { finish_error: msg })
+          if (auto) d.notify?.(`Couldn't finish: ${task.title}`, msg)
           throw new Error(msg)
         })
         .finally(() => { inflight.delete(taskId); changed() })

@@ -250,9 +250,16 @@ export function createRunner(d: RunnerDeps) {
           d.db.setStatus(taskId, ok ? 'succeeded' : 'failed')
           const trigger = d.db.getColumn(a.columnId)?.trigger
           const next = ok ? trigger?.onSuccess : trigger?.onFailure
-          if (next && a.move && task.column_id === a.columnId && d.db.getColumn(next)?.board_id === task.board_id) {
-            d.db.moveTask(taskId, next, Number.MAX_SAFE_INTEGER)
+          const nextCol = next && a.move && task.column_id === a.columnId ? d.db.getColumn(next) : undefined
+          const to = nextCol?.board_id === task.board_id ? nextCol : undefined
+          if (to) {
+            d.db.moveTask(taskId, to.id, Number.MAX_SAFE_INTEGER)
             enter(taskId, false)
+          }
+          // The card stops here and waits for the user, unless it moved on to another step or to a finish
+          // column (the finisher notifies). Stopped by the user: they know.
+          if (!a.killReason && !to?.trigger && !to?.finish_on_enter) {
+            d.notify?.(`${ok ? 'Done' : 'Failed'}: ${task.title}`, `${d.db.getColumn(a.columnId)?.name ?? ''}: ${o.text}`)
           }
         }
       }

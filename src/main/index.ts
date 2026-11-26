@@ -21,7 +21,8 @@ if (process.env.BATON_USER_DATA) app.setPath('userData', process.env.BATON_USER_
 
 // One instance per data folder: two would recover the same DB and run duplicate agents on the same worktrees.
 if (!app.requestSingleInstanceLock()) app.exit(0)
-app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus() } })
+const showWindow = () => { if (win) { if (win.isMinimized()) win.restore(); win.focus() } }
+app.on('second-instance', showWindow)
 
 const rendererFile = join(__dirname, '../renderer/index.html')
 /** The app's own page: dev server or packaged index.html. Nothing else may navigate the window or call the API. */
@@ -29,6 +30,11 @@ const appUrl = process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(rendererFile).
 
 let win: BrowserWindow | null = null
 const push = (e: PushEvent) => win?.webContents.send('push', e)
+const notify = (title: string, body: string) => {
+  const n = new Notification({ title, body: body.slice(0, 200) })
+  n.on('click', showWindow)
+  n.show()
+}
 
 /** Run a command (a harness's interactive sign-in) in a new terminal window. */
 async function openTerminal(argv: string[]) {
@@ -60,12 +66,12 @@ app.whenReady().then(async () => {
   const runner = createRunner({
     db, harnesses, git, spawn, resolveBin, push,
     onFinishColumn: (id) => { finisher.finish(id, { auto: true }).catch((e) => console.error('finish failed', e.message)) },
-    notify: (title, body) => new Notification({ title, body: body.slice(0, 200) }).show(),
+    notify,
     worktreeRoot: join(app.getPath('userData'), 'worktrees')
   })
   const breakdowns = createBreakdowns({ db, harnesses, resolveBin, spawn, push })
   const finisher = createFinisher({
-    db, git, push, isActive: runner.isActive,
+    db, git, push, notify, isActive: runner.isActive,
     gh: async (args, cwd) => {
       const bin = which('gh')
       if (!bin) return { code: 127, stdout: '', stderr: 'GitHub CLI (gh) not found on PATH. Install it and run `gh auth login`.' }
