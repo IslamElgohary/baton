@@ -28,6 +28,17 @@ test('updateColumn rejects malformed triggers and unknown permissions (renderer 
   expect(() => api.updateColumn(col.id, { trigger: t as never })).not.toThrow()
 })
 
+test('setFinishMode accepts all four finish modes and rejects unknown ones', () => {
+  const { api, db, boardId } = setup()
+  expect(db.getBoard(boardId).board.finish_mode).toBe('merge') // a board without a remote default
+  for (const mode of ['merge', 'pr', 'publish', 'notify'] as const) {
+    api.setFinishMode(boardId, mode)
+    expect(db.getBoard(boardId).board.finish_mode).toBe(mode)
+  }
+  expect(() => api.setFinishMode(boardId, 'yolo' as never)).toThrow(/Unknown finish mode "yolo"/)
+  expect(db.getBoard(boardId).board.finish_mode).toBe('notify')
+})
+
 test('updateBaseBranch refuses names that are not real branches', async () => {
   const { api, db, boardId } = setup()
   await expect(api.updateBaseBranch(boardId, '--output=/tmp/x')).rejects.toThrow()
