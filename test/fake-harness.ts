@@ -20,6 +20,9 @@ process.stdin.on('data', (c) => {
     const first = msg.split('\\n')[0]
     if (scenario === 'draft') out({ t: 'end', v: '<artifact name="tasks.json">\\n' + JSON.stringify([
       { title: 'Schema', description: 'db', blockedBy: [] }, { title: 'API', blockedBy: [0, 5] }, { title: '' }]) + '\\n</artifact>\\n[DONE]' })
+    if (scenario === 'baddraft') out({ t: 'end', v: msg.includes('not valid JSON')
+      ? '<artifact name="tasks.json">\\n[{"title": "Fixed", "description": "show a \\\\"hint\\\\""}]\\n</artifact>\\n[DONE]'
+      : '<artifact name="tasks.json">\\n[{"title": "Broken", "description": "show a "hint""}]\\n</artifact>\\n[DONE]' })
     if (scenario === 'echo') out({ t: 'end', v: first + '\\n[DONE]' })
     if (scenario === 'ask') out({ t: 'end', v: resume
       ? 'Using ' + first + '\\n<artifact name="choice.md">\\ncolor: ' + first + '\\n</artifact>\\n[DONE]'

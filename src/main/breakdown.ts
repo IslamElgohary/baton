@@ -59,6 +59,14 @@ export function parseDraft(text: string): DraftTask[] | null {
   return tasks.length ? tasks : null
 }
 
+/** Why a proposed task list can't be used, in words the agent can act on. */
+export function draftProblem(text: string): string {
+  try { JSON.parse(text) } catch (e) {
+    return `it is not valid JSON (${(e as Error).message}). Escape double quotes inside strings as \\"`
+  }
+  return 'it must be a non-empty JSON array of tasks, each with a "title"'
+}
+
 /** "Break down" sessions: one read-only agent session per epic, in the board's repo. Live state kept in memory. */
 export function createBreakdowns(d: BreakdownDeps) {
   const state = new Map<number, Breakdown & { kill?: (reason: string) => void; forceKill?: () => void }>()
@@ -88,6 +96,7 @@ export function createBreakdowns(d: BreakdownDeps) {
         d.push({ type: 'breakdown', epicId, event })
       }
       let draft: DraftTask[] | null = null
+      let problem = 'it was not saved' // why there is no usable draft yet
       record({ kind: 'info', text: `Started ${harness.name} session · ${model || 'default model'} · read-only · ${board.repo_path}` })
       const fail = (e: unknown) => {
         s.running = false
@@ -103,7 +112,16 @@ export function createBreakdowns(d: BreakdownDeps) {
         spawn: d.spawn,
         onEvent: record,
         onSessionId: () => {},
-        onArtifact: (a) => { if (a.name === DRAFT_ARTIFACT) draft = parseDraft(a.content) ?? draft }
+        onArtifact: (a) => {
+          if (a.name !== DRAFT_ARTIFACT) return
+          draft = parseDraft(a.content)
+          if (!draft) problem = draftProblem(a.content)
+        },
+        // Models sometimes write broken JSON (e.g. an unescaped quote): tell the agent, in the same session.
+        onDone: (summary) => (draft ??= parseDraft(summary))
+          ? null
+          : `The ${DRAFT_ARTIFACT} artifact can't be used: ${problem}. Save the complete corrected list again as ` +
+            `<artifact name="${DRAFT_ARTIFACT}">…</artifact>, then end with [DONE].`
       }) } catch (e) { return fail(e) }
       s.kill = session.kill
       s.forceKill = session.forceKill
@@ -112,7 +130,7 @@ export function createBreakdowns(d: BreakdownDeps) {
       session.result.then((m) => {
         s.running = false
         if (m.type !== 'done') s.error = m.type === 'question' ? `The agent asked: ${m.text}\nAdd the answer to the epic description and try again.` : m.text
-        else if (!(draft ??= parseDraft(m.text))) s.error = `The agent finished without a valid ${DRAFT_ARTIFACT} artifact.`
+        else if (!(draft ??= parseDraft(m.text))) s.error = `The agent finished without a usable ${DRAFT_ARTIFACT}: ${problem}.`
         else d.db.setEpicDraft(epicId, draft)
         d.push({ type: 'changed' })
       }).catch(fail)

@@ -78,6 +78,8 @@ export interface SessionSpec {
   onEvent: (e: SessionEvent) => void
   onSessionId: (id: string) => void
   onArtifact: (a: { name: string; content: string }) => void
+  /** Before accepting [DONE]: return a message to send back instead (e.g. a required artifact is invalid). */
+  onDone?: (summary: string) => string | null
 }
 
 /**
@@ -137,6 +139,8 @@ export function startSession(s: SessionSpec): { kill: (reason: string) => void; 
     }
     if (!e.ok && e.error) return end({ type: 'failed', text: e.error })
     const m = markerOf(extractArtifacts(e.response).rest || extractArtifacts(turnText).rest)
+    const fix = m?.type === 'done' && turns < s.maxTurns ? s.onDone?.(m.text) : null
+    if (fix) return send(fix)
     if (m) return end(m)
     if (turns >= s.maxTurns) {
       return end({ type: 'failed', text: `Not finished after ${turns} turns. Last reply:\n${e.response.trim() || '(empty)'}` })
