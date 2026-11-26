@@ -67,7 +67,7 @@ export function createApi(d: ApiDeps) {
       d.db.updateBoardBase(id, name)
     },
     setFinishMode(id: number, mode: FinishMode) {
-      if (mode !== 'merge' && mode !== 'pr') throw new Error(`Unknown finish mode "${mode}"`)
+      if (!['merge', 'pr', 'publish', 'notify'].includes(mode)) throw new Error(`Unknown finish mode "${mode}"`)
       d.db.setFinishMode(id, mode)
     },
     /** Removes the board's worktree folders too (leftover work is committed; branches stay in the repo). */
