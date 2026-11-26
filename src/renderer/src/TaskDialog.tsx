@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Artifact, Board, Column, Epic, Run, Task } from '../../shared/types'
+import type { Artifact, Board, Column, Epic, Run, SessionEvent, Task } from '../../shared/types'
 import { call, onPush, type Act } from './api'
 import { StatusBadge } from './StatusBadge'
 import { Modal } from './Modal'
@@ -36,13 +36,10 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
       act(call('listArtifacts', task.id)).then((a) => a && setArtifacts(a))
     }
     load()
+    // Runs are listed without transcripts, so reloading them is cheap; each SessionView loads and streams its own.
     return onPush((e) => {
       if (e.type === 'changed') load()
-      // Live transcript: append each streamed event to its session (reload if it's a new one).
-      if (e.type === 'session' && e.taskId === task.id) {
-        if (!runsRef.current.some((r) => r.id === e.runId)) load()
-        else setRuns((rs) => rs.map((r) => r.id === e.runId ? { ...r, events: [...r.events, e.event] } : r))
-      }
+      if (e.type === 'session' && e.taskId === task.id && !runsRef.current.some((r) => r.id === e.runId)) load() // a new session
     })
   }, [task.id, act])
 
@@ -102,18 +99,30 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
         <div>
           <span className="label">Sessions</span>
           {runs.length === 0 && <p className="text-sm text-neutral-500">No sessions yet. Move the card into a ⚡ column to start one.</p>}
-          {runs.map((r, i) => <SessionView key={r.id} run={r} column={columns.find((c) => c.id === r.column_id)} open={i === 0} />)}
+          {runs.map((r, i) => <SessionView key={r.id} run={r} column={columns.find((c) => c.id === r.column_id)} open={i === 0} act={act} />)}
         </div>
       </div>
     </Modal>
   )
 }
 
-function SessionView({ run, column, open }: { run: Run; column?: Column; open: boolean }) {
+/** One session. Its transcript is fetched the first time it's expanded, then streamed events are appended. */
+function SessionView({ run, column, open, act }: { run: Run; column?: Column; open: boolean; act: Act }) {
   const live = run.ended_at === null
   const state = live ? '● live' : run.ok ? '✓ done' : '✕ failed'
+  const [shown, setShown] = useState(open)
+  const [events, setEvents] = useState<SessionEvent[] | null>(null)
+  // Pushes before the fetch returns are dropped: replies and pushes arrive in the order the main process sent
+  // them, so the fetched transcript already holds those events.
+  useEffect(() => onPush((e) => {
+    if (e.type === 'session' && e.runId === run.id) setEvents((ev) => ev && [...ev, e.event])
+  }), [run.id])
+  useEffect(() => { // fetch once, when first expanded
+    if (shown && !events) act(call('getRunEvents', run.id)).then((ev) => ev && setEvents(ev))
+  }, [shown, run.id])
   return (
-    <details open={open} className="mb-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
+    <details open={shown} onToggle={(e) => setShown(e.currentTarget.open)}
+      className="mb-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
       <summary className="cursor-pointer px-3 py-2 text-sm">
         <b>{column?.name ?? 'Deleted column'}</b> · {run.harness} · {run.model || 'default'} ·{' '}
         <span className={live ? 'text-blue-600' : run.ok ? 'text-green-600' : 'text-red-600'}>{state}</span>
@@ -124,7 +133,7 @@ function SessionView({ run, column, open }: { run: Run; column?: Column; open: b
           <span className="label">Result</span>{run.summary}
         </div>
       )}
-      <div className="border-t border-neutral-200 dark:border-neutral-800"><Transcript events={run.events} live={live} /></div>
+      <div className="border-t border-neutral-200 dark:border-neutral-800">{events ? <Transcript events={events} live={live} /> : <p className="p-3 text-xs text-neutral-500">Loading…</p>}</div>
     </details>
   )
 }

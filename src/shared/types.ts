@@ -109,7 +109,7 @@ export type SessionEvent =
   | { kind: 'question'; text: string } // agent is waiting for the user's answer
   | { kind: 'artifact'; name: string } // agent saved an artifact
 
-/** A harness session for one task in one column. "Run again" continues the same session. */
+/** A harness session for one task in one column. "Run again" continues the same session. Its transcript: getRunEvents. */
 export interface Run {
   id: number
   task_id: number
@@ -123,7 +123,6 @@ export interface Run {
   summary: string | null
   /** Set while the session is paused waiting for the user's answer. */
   question: string | null
-  events: SessionEvent[]
 }
 
 export interface BoardData {

@@ -124,6 +124,7 @@ export function createApi(d: ApiDeps) {
     listArtifacts: (taskId: number) => d.db.listArtifacts(taskId),
     stopTask: (id: number) => d.runner.stop(id),
     listRuns: (taskId: number) => d.db.listRuns(taskId),
+    getRunEvents: (runId: number) => d.db.runEvents(runId),
     finishTask: (id: number) => d.finisher.finish(id),
     removeWorktree: (id: number) => d.finisher.cleanup(id),
     /** The task's changes vs the base branch (from its worktree, or its branch once the worktree is gone). */

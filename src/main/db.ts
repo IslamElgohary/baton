@@ -150,11 +150,8 @@ export function createDb(file: string) {
     db.exec('BEGIN')
     try { const r = fn(); db.exec('COMMIT'); return r } catch (e) { db.exec('ROLLBACK'); throw e }
   }
-  const toRun = ({ events: _blob, log: _log, prompt: _prompt, ...r }: Row): Run => ({
-    ...r,
-    events: (db.prepare('SELECT event FROM run_events WHERE run_id = ? ORDER BY id').all(r.id as number) as { event: string }[])
-      .map((e) => JSON.parse(e.event) as SessionEvent)
-  }) as Run
+  // Drops legacy columns (the old events blob, log, prompt).
+  const toRun = ({ events: _blob, log: _log, prompt: _prompt, ...r }: Row): Run => r as unknown as Run
   const toTask = (r: Row): Task => ({
     ...r, blocked_by: r.blocked_by ? String(r.blocked_by).split(',').map(Number) : [], blocked: !!r.blocked, resolved: !!r.resolved
   }) as Task
@@ -406,6 +403,9 @@ export function createDb(file: string) {
     reopenRun: (id: number) => void run('UPDATE runs SET ended_at = NULL, ok = NULL, summary = NULL WHERE id = ?', id),
     setRunSession: (id: number, sessionId: string) => void run('UPDATE runs SET session_id = ? WHERE id = ?', sessionId, id),
     appendEvent: (id: number, e: SessionEvent) => void run('INSERT INTO run_events (run_id, event) VALUES (?, ?)', id, JSON.stringify(e)),
+    /** A session's transcript (kept off Run: listing runs must stay cheap however long the transcripts get). */
+    runEvents: (id: number): SessionEvent[] =>
+      all<{ event: string }>('SELECT event FROM run_events WHERE run_id = ? ORDER BY id', id).map((e) => JSON.parse(e.event) as SessionEvent),
     finishRun(id: number, ok: boolean, summary: string) {
       run("UPDATE runs SET ended_at = datetime('now'), ok = ?, summary = ? WHERE id = ?", ok ? 1 : 0, summary, id)
     },

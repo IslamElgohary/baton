@@ -75,7 +75,7 @@ const until = async (cond: () => boolean, ms = 5000) => {
   }
 }
 const userTurns = (db: ReturnType<typeof createDb>, taskId: number) =>
-  db.listRuns(taskId)[0].events.filter((e) => e.kind === 'user').map((e) => (e as { text: string }).text)
+  db.runEvents(db.listRuns(taskId)[0].id).filter((e) => e.kind === 'user').map((e) => (e as { text: string }).text)
 
 test('[DONE] routes the card; next column gets a new session with prev.summary', async () => {
   const { db, boardId, backlog, plan, build, review, runner, trigger } = setup()
@@ -132,11 +132,11 @@ test('"Run again" continues the same session', async () => {
   await until(() => db.getTask(id).status === 'succeeded')
   const [run] = db.listRuns(id)
   runner.retry(id)
-  await until(() => db.getTask(id).status === 'succeeded' && db.listRuns(id)[0].events.some((e) => e.kind === 'text'))
+  await until(() => db.getTask(id).status === 'succeeded' && db.runEvents(db.listRuns(id)[0].id).some((e) => e.kind === 'text'))
   const runs = db.listRuns(id)
   expect(runs).toHaveLength(1)
   expect(runs[0].id).toBe(run.id)
-  expect(runs[0].events).toContainEqual({ kind: 'text', text: `resumed:${run.session_id}` })
+  expect(db.runEvents(runs[0].id)).toContainEqual({ kind: 'text', text: `resumed:${run.session_id}` })
 })
 
 test('concurrency limit queues extra tasks', async () => {
@@ -216,7 +216,7 @@ test('[QUESTION] pauses the session; the answer resumes it and artifacts are sav
   await until(() => db.getTask(id).column_id === build.id && db.getTask(id).status === 'succeeded')
   const runs = db.listRuns(id)
   expect(runs[1]).toMatchObject({ id: paused.id, ok: 1, question: null }) // same session, resumed
-  expect(runs[1].events).toContainEqual({ kind: 'user', text: 'blue' })
+  expect(db.runEvents(runs[1].id)).toContainEqual({ kind: 'user', text: 'blue' })
   expect(db.listArtifacts(id).map((a) => [a.name, a.content])).toEqual([['choice.md', 'color: blue']])
   expect(db.getTask(id).artifacts).toBe(1)
   expect(runs[0].summary).toBe('saw color: blue') // next step gets the artifact as a variable
@@ -242,7 +242,7 @@ test('the queue lives in the database: an answer queued at quit runs after a res
   restart().pump()
   await until(() => db.getTask(id).status === 'succeeded')
   const [run] = db.listRuns(id)
-  expect(run.events).toContainEqual({ kind: 'user', text: 'blue' }) // same session, resumed with the answer
+  expect(db.runEvents(run.id)).toContainEqual({ kind: 'user', text: 'blue' }) // same session, resumed with the answer
   expect(db.listRuns(id)).toHaveLength(1)
 })
 
