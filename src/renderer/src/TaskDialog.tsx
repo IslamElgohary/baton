@@ -5,6 +5,7 @@ import { StatusBadge } from './StatusBadge'
 import { Modal } from './Modal'
 import { Transcript } from './Transcript'
 import { AnswerBox } from './AnswerBox'
+import { Markdown } from './Markdown'
 
 interface Props {
   task: Task
@@ -143,18 +144,27 @@ function SessionView({ run, column, open, act }: { run: Run; column?: Column; op
   )
 }
 
-function ArtifactView({ artifact, column }: { artifact: Artifact; column?: Column }) {
+export function ArtifactView({ artifact, column }: { artifact: Artifact; column?: Column }) {
   const html = /\.html?$/i.test(artifact.name)
+  const markdown = /\.(md|markdown)$/i.test(artifact.name)
+  const [raw, setRaw] = useState(false)
   return (
     <details className="mb-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
       <summary className="cursor-pointer px-3 py-2 text-sm">
         📎 <b>{artifact.name}</b>
         <span className="ml-2 text-xs text-neutral-500">{column?.name ?? ''} · {artifact.updated_at} UTC</span>
         <button className="ml-3 text-xs underline" onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(artifact.content) }}>Copy</button>
+        {markdown && (
+          <button className="ml-3 text-xs underline" onClick={(e) => { e.preventDefault(); setRaw((r) => !r) }}>
+            {raw ? 'Preview' : 'Raw'}
+          </button>
+        )}
       </summary>
       {html
         ? <iframe sandbox="" srcDoc={artifact.content} className="h-96 w-full border-t border-neutral-200 bg-white dark:border-neutral-800" />
-        : <pre className="max-h-96 overflow-auto border-t border-neutral-200 bg-neutral-50 p-3 text-xs whitespace-pre-wrap dark:border-neutral-800 dark:bg-neutral-950">{artifact.content}</pre>}
+        : markdown && !raw
+          ? <div className="max-h-96 overflow-auto border-t border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-900 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100"><Markdown text={artifact.content} /></div>
+          : <pre className="max-h-96 overflow-auto border-t border-neutral-200 bg-neutral-50 p-3 text-xs whitespace-pre-wrap dark:border-neutral-800 dark:bg-neutral-950">{artifact.content}</pre>}
     </details>
   )
 }
