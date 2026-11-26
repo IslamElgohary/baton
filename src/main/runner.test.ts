@@ -46,6 +46,7 @@ function setup(o: { maxConcurrency?: number; maxTurns?: number } = {}) {
   const events: PushEvent[] = []
   const root = mkdtempSync(join(tmpdir(), 'baton-runner-'))
   const merges: [string, string][] = [] // [worktree, branch]
+  const notes: string[] = [] // notification titles
   const deps: RunnerDeps = {
     db, harnesses: [fake], spawn,
     git: {
@@ -59,12 +60,13 @@ function setup(o: { maxConcurrency?: number; maxTurns?: number } = {}) {
     },
     resolveBin: () => process.execPath,
     worktreeRoot: root,
-    push: (e) => events.push(e)
+    push: (e) => events.push(e),
+    notify: (_kind, title) => notes.push(title)
   }
   const runner = createRunner(deps)
   const trigger = (model: string, prompt = 'go', onSuccess: number | null = null, onFailure: number | null = null): Trigger =>
     ({ harness: 'fake', model, permission: 'read', prompt, onSuccess, onFailure })
-  return { db, boardId, backlog, plan, build, review, runner, events, trigger, merges, root, restart: () => createRunner(deps) }
+  return { db, boardId, backlog, plan, build, review, runner, events, trigger, merges, notes, root, restart: () => createRunner(deps) }
 }
 
 const until = async (cond: () => boolean, ms = 5000) => {
@@ -172,6 +174,30 @@ test('stop kills the session and keeps the card in its column', async () => {
   await until(() => db.getTask(id).status === 'failed')
   expect(db.getTask(id).column_id).toBe(plan.id)
   expect(db.listRuns(id)[0].summary).toBe('Stopped by user')
+})
+
+test('notifies when a card stops: done or failed, not between steps and not when the user stops it', async () => {
+  const { db, boardId, backlog, plan, build, review, runner, trigger, notes } = setup()
+  db.updateColumn(plan.id, { trigger: trigger('echo', 'go', build.id) })
+  db.updateColumn(build.id, { trigger: trigger('echo', 'go', review.id) }) // Review has no trigger: the card stops there
+  const a = db.createTask(boardId, plan.id, 'a')
+  runner.onEnter(a)
+  await until(() => db.getTask(a).column_id === review.id)
+  expect(notes).toEqual(['Done: a'])
+
+  db.updateColumn(plan.id, { trigger: trigger('fail') })
+  const b = db.createTask(boardId, plan.id, 'b')
+  runner.onEnter(b)
+  await until(() => db.getTask(b).status === 'failed')
+  expect(notes).toEqual(['Done: a', 'Failed: b'])
+
+  db.updateColumn(plan.id, { trigger: trigger('hang', 'go', null, backlog.id) })
+  const c = db.createTask(boardId, plan.id, 'c')
+  runner.onEnter(c)
+  await until(() => db.listRuns(c)[0]?.session_id != null)
+  runner.stop(c)
+  await until(() => db.getTask(c).status === 'failed')
+  expect(notes).toEqual(['Done: a', 'Failed: b'])
 })
 
 test('a leftover process holding stdout does not keep the session open', async () => {

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { PushEvent, SessionEvent } from '../shared/types'
+import type { NotifyKind, PushEvent, SessionEvent } from '../shared/types'
 import type { Db } from './db'
 import type { Git } from './git'
 import type { Harness } from './harnesses/types'
@@ -16,7 +16,7 @@ export interface RunnerDeps {
   worktreeRoot: string
   push: (e: PushEvent) => void
   /** Desktop notification (e.g. the agent asked a question). */
-  notify?: (title: string, body: string) => void
+  notify?: (kind: NotifyKind, title: string, body: string) => void
   /** A card entered a column with a finish action (merge / PR). */
   onFinishColumn?: (taskId: number) => void
 }
@@ -241,7 +241,7 @@ export function createRunner(d: RunnerDeps) {
         // Session stays open (ended_at NULL) until the user answers; it doesn't hold a concurrency slot.
         d.db.setRunQuestion(a.runId, o.text)
         d.db.setStatus(taskId, 'waiting')
-        d.notify?.(`Question: ${d.db.getTask(taskId).title}`, o.text)
+        d.notify?.('question', `Question: ${d.db.getTask(taskId).title}`, o.text)
       } else {
         const ok = o.type === 'done'
         d.db.finishRun(a.runId, ok, o.type === 'question' ? (a.killReason ?? 'Stopped') : o.text)
@@ -250,9 +250,16 @@ export function createRunner(d: RunnerDeps) {
           d.db.setStatus(taskId, ok ? 'succeeded' : 'failed')
           const trigger = d.db.getColumn(a.columnId)?.trigger
           const next = ok ? trigger?.onSuccess : trigger?.onFailure
-          if (next && a.move && task.column_id === a.columnId && d.db.getColumn(next)?.board_id === task.board_id) {
-            d.db.moveTask(taskId, next, Number.MAX_SAFE_INTEGER)
+          const nextCol = next && a.move && task.column_id === a.columnId ? d.db.getColumn(next) : undefined
+          const to = nextCol?.board_id === task.board_id ? nextCol : undefined
+          if (to) {
+            d.db.moveTask(taskId, to.id, Number.MAX_SAFE_INTEGER)
             enter(taskId, false)
+          }
+          // The card stops here and waits for the user, unless it moved on to another step or to a finish
+          // column (the finisher notifies). Stopped by the user: they know.
+          if (!a.killReason && !to?.trigger && !to?.finish_on_enter) {
+            d.notify?.(ok ? 'done' : 'failed', `${ok ? 'Done' : 'Failed'}: ${task.title}`, `${d.db.getColumn(a.columnId)?.name ?? ''}: ${o.text}`)
           }
         }
       }

@@ -88,10 +88,12 @@ test('startBrainstorm and answerBreakdown delegate to the breakdown session', ()
 
 test('saveSettings rejects out-of-range or malformed values and drops unknown keys', () => {
   const { api, db } = setup()
-  const ok = { maxConcurrency: 2, idleTimeoutMin: 5, maxTurns: 4, binPaths: { fake: '/bin/x' } }
-  for (const bad of [{ ...ok, maxConcurrency: NaN }, { ...ok, maxConcurrency: 0 }, { ...ok, maxTurns: 1.5 }, { ...ok, binPaths: { fake: 1 } }, null]) {
+  const notifications = { question: true, done: false, failed: true, finished: false }
+  const ok = { maxConcurrency: 2, idleTimeoutMin: 5, maxTurns: 4, binPaths: { fake: '/bin/x' }, notifications }
+  for (const bad of [{ ...ok, maxConcurrency: NaN }, { ...ok, maxConcurrency: 0 }, { ...ok, maxTurns: 1.5 }, { ...ok, binPaths: { fake: 1 } },
+    { ...ok, notifications: null }, { ...ok, notifications: { ...notifications, done: 'no' } }, { ...ok, notifications: { question: true } }, null]) {
     expect(() => api.saveSettings(bad as never)).toThrow(/Invalid settings/)
   }
-  api.saveSettings({ ...ok, extra: 'x' } as never)
+  api.saveSettings({ ...ok, extra: 'x', notifications: { ...notifications, extra: true } } as never)
   expect(db.getSettings()).toEqual(ok)
 })

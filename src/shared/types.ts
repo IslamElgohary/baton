@@ -146,12 +146,17 @@ export interface HarnessInfo {
   models: string[]
 }
 
+/** Kinds of system notification, each switchable in Settings. */
+export const NOTIFY_KINDS = ['question', 'done', 'failed', 'finished'] as const
+export type NotifyKind = (typeof NOTIFY_KINDS)[number]
+
 export interface Settings {
   maxConcurrency: number
   idleTimeoutMin: number
   /** Turns per session before giving up when the agent never reports [DONE]/[FAILED]. */
   maxTurns: number
   binPaths: Record<string, string>
+  notifications: Record<NotifyKind, boolean>
 }
 
 /** Events pushed main → renderer. */

@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
-import type { HarnessInfo, Settings as SettingsT } from '../../shared/types'
+import type { HarnessInfo, NotifyKind, Settings as SettingsT } from '../../shared/types'
 import { call, type Act } from './api'
+
+const NOTIFY_LABELS: Record<NotifyKind, string> = {
+  question: 'An agent asks a question',
+  done: 'A task is done (its last step succeeded)',
+  failed: 'A task failed',
+  finished: 'A task in a finish column was merged or opened as a PR, or could not be'
+}
 
 interface Props {
   harnesses: HarnessInfo[]
@@ -44,6 +51,19 @@ export function Settings({ harnesses, reload, act }: Props) {
           <input type="number" min={1} className="input w-24" value={s.idleTimeoutMin}
             onChange={(e) => save({ ...s, idleTimeoutMin: Math.max(1, Number(e.target.value) || 1) })} />
         </label>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="mb-2 font-semibold">Notifications</h2>
+        <div className="flex flex-col gap-1.5">
+          {(Object.keys(NOTIFY_LABELS) as NotifyKind[]).map((k) => (
+            <label key={k} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={s.notifications[k]}
+                onChange={(e) => save({ ...s, notifications: { ...s.notifications, [k]: e.target.checked } })} />
+              {NOTIFY_LABELS[k]}
+            </label>
+          ))}
+        </div>
       </section>
 
       <div className="mb-2 flex items-center">
