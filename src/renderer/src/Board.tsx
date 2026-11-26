@@ -5,7 +5,7 @@ import {
 import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useEffect, useState, type ReactNode } from 'react'
-import type { BoardData, Column, Epic, HarnessInfo, Task } from '../../shared/types'
+import type { BoardData, Column, Epic, FinishMode, HarnessInfo, Task } from '../../shared/types'
 import { call, type Act } from './api'
 import { ColumnDialog } from './ColumnDialog'
 import { StatusBadge } from './StatusBadge'
@@ -52,7 +52,7 @@ interface Props {
 }
 
 /** Per-card extras: its epic. */
-type Meta = Map<number, { epic?: Epic }>
+export type Meta = Map<number, { epic?: Epic }>
 
 export function Board({ data, setData, harnesses, act, epicFilter }: Props) {
   const { board, columns, tasks } = data
@@ -123,7 +123,7 @@ export function Board({ data, setData, harnesses, act, epicFilter }: Props) {
   )
 }
 
-function BoardHeader({ data: { board }, act }: { data: BoardData; act: Act }) {
+export function BoardHeader({ data: { board }, act }: { data: BoardData; act: Act }) {
   const [branches, setBranches] = useState<string[]>([])
   const loadBranches = () => act(call('listBranches', board.id)).then((b) => b && setBranches(b))
   useEffect(() => { loadBranches() }, [board.id])
@@ -131,7 +131,7 @@ function BoardHeader({ data: { board }, act }: { data: BoardData; act: Act }) {
     <header className="flex items-center gap-3 border-b border-neutral-200 px-4 py-2 dark:border-neutral-800">
       <InlineEdit value={board.name} className="shrink-0 text-lg font-semibold" onSave={(v) => act(call('renameBoard', board.id, v))} />
       <span className="min-w-0 flex-1 truncate text-xs text-neutral-500" title={board.repo_path}>{board.repo_path}</span>
-      <label className="flex shrink-0 items-center gap-1 text-xs text-neutral-500" title="Branch tasks start from and finish into">
+      <label className="flex shrink-0 items-center gap-1 text-xs text-neutral-500" title="Branch tasks start from (and merge or target PRs into)">
         base:
         <select className="max-w-48 rounded border border-neutral-300 bg-transparent px-1 py-0.5 font-mono dark:border-neutral-700"
           value={board.base_branch} onFocus={loadBranches}
@@ -140,12 +140,14 @@ function BoardHeader({ data: { board }, act }: { data: BoardData; act: Act }) {
           {branches.map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
       </label>
-      <label className="flex shrink-0 items-center gap-1 text-xs text-neutral-500" title="How finished tasks reach the base branch">
+      <label className="flex shrink-0 items-center gap-1 text-xs text-neutral-500" title="What happens when a task enters a finish column">
         finish:
         <select className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 dark:border-neutral-700" value={board.finish_mode}
-          onChange={(e) => act(call('setFinishMode', board.id, e.target.value as 'merge' | 'pr'))}>
-          <option value="pr">pull request</option>
+          onChange={(e) => act(call('setFinishMode', board.id, e.target.value as FinishMode))}>
+          <option value="pr">pull request (stacked for epics)</option>
           <option value="merge">local merge</option>
+          <option value="publish">publish branch</option>
+          <option value="notify">notify only</option>
         </select>
       </label>
       <button className="btn-danger shrink-0 whitespace-nowrap" onClick={() => {
@@ -171,7 +173,7 @@ function ColumnView({ column, tasks, archived, act, meta, epicFilter, onEdit, on
           <InlineEdit value={column.name} className="text-sm font-semibold" onSave={(v) => act(call('updateColumn', column.id, { name: v }))} />
           <span className="text-xs text-neutral-500">{tasks.length}</span>
           {column.is_done ? <span className="text-xs text-green-600" title="Done column">✓</span> : null}
-          {column.finish_on_enter ? <span className="text-xs text-purple-600" title="Finishes cards that enter (merge or PR)">⇡ finish</span> : null}
+          {column.finish_on_enter ? <span className="text-xs text-purple-600" title="Finishes cards that enter (per the board's finish mode)">⇡ finish</span> : null}
           <div className="flex-1" />
           {column.is_done && tasks.length > 0 ? (
             <button className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
@@ -223,17 +225,20 @@ const ATTENTION = {
   done: { ring: 'ring-2 ring-green-400', dot: 'bg-green-500', label: 'Finished: not opened yet' }
 }
 
-function CardView({ task, meta }: { task: Task; meta: Meta }) {
+export function CardView({ task, meta }: { task: Task; meta: Meta }) {
   const m = meta.get(task.id)
   const a = task.attention ? ATTENTION[task.attention] : null
+  const badgeClass = "rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-800 dark:bg-purple-950 dark:text-purple-300"
   return (
     <div className={`relative cursor-pointer rounded-md border border-neutral-200 bg-white p-2.5 shadow-sm hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-700 ${a?.ring ?? ''}`}>
       {a && <span title={a.label} className={`absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full ${a.dot}`} />}
       <div className="flex items-start gap-2">
         <div className="flex-1 text-sm">{task.title}</div>
         <StatusBadge status={task.status} />
-        {task.merged_at && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-800 dark:bg-purple-950 dark:text-purple-300">merged</span>}
-        {task.pr_url && <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-800 dark:bg-purple-950 dark:text-purple-300">PR</span>}
+        {task.merged_at && <span className={badgeClass}>merged</span>}
+        {task.pr_url && <span className={badgeClass}>PR</span>}
+        {task.published_at && <span className={badgeClass}>published</span>}
+        {task.finished_at && <span className={badgeClass}>finished</span>}
         {task.finish_error && <span className="text-xs text-red-600" title={task.finish_error}>⚠ finish failed</span>}
       </div>
       {task.description && <div className="mt-1 truncate text-xs text-neutral-500">{task.description.split('\n')[0]}</div>}
