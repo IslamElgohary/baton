@@ -4,8 +4,7 @@ import { call, onPush, type Act } from './api'
 import { StatusBadge } from './StatusBadge'
 import { Modal } from './Modal'
 import { Transcript } from './Transcript'
-
-const IS_MAC = navigator.userAgent.includes('Mac')
+import { AnswerBox } from './AnswerBox'
 
 interface Props {
   task: Task
@@ -135,21 +134,6 @@ function SessionView({ run, column, open, act }: { run: Run; column?: Column; op
       )}
       <div className="border-t border-neutral-200 dark:border-neutral-800">{events ? <Transcript events={events} live={live} /> : <p className="p-3 text-xs text-neutral-500">Loading…</p>}</div>
     </details>
-  )
-}
-
-function AnswerBox({ question, onSend }: { question: string; onSend: (text: string) => Promise<unknown> }) {
-  const [text, setText] = useState('')
-  const send = async () => { if (text.trim()) { await onSend(text); setText('') } }
-  return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
-      <div className="mb-1 text-xs font-medium text-amber-700 dark:text-amber-300">❓ The agent is waiting for your answer</div>
-      <div className="mb-2 text-sm whitespace-pre-wrap">{question}</div>
-      <textarea autoFocus className="input h-20" placeholder={`Your answer… (${IS_MAC ? '⌘↵' : 'Ctrl+Enter'} to send)`} value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && (IS_MAC ? e.metaKey : e.ctrlKey)) send() }} />
-      <div className="mt-2 flex justify-end"><button className="btn-primary" disabled={!text.trim()} onClick={send}>Send answer</button></div>
-    </div>
   )
 }
 
