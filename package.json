@@ -1,7 +1,7 @@
 {
   "name": "baton",
   "productName": "Baton",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "A kanban board that hands each card from coding agent to coding agent, column by column.",
   "license": "MIT",
   "author": "ielgohary <15884858+IElgohary@users.noreply.github.com>",
