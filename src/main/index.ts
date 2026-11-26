@@ -6,7 +6,7 @@ import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electr
 import type { PushEvent } from '../shared/types'
 import { createApi } from './api'
 import { createBreakdowns } from './breakdown'
-import { createFinisher, type Finisher } from './finish'
+import { createFinisher } from './finish'
 import { createDb } from './db'
 import { createGit } from './git'
 import { harnesses } from './harnesses'
@@ -55,15 +55,16 @@ app.whenReady().then(async () => {
     const h = harnesses.find((x) => x.id === id)
     return h ? which(db.getSettings().binPaths[id] || h.bin) : null
   }
-  let finisher: Finisher | undefined // needs runner.isActive; the runner needs it for finish columns
+  // The runner and the finisher need each other: a card reaching a finish column is finished, and finishing waits
+  // for the card's session to stop. The callback runs only after both exist.
   const runner = createRunner({
     db, harnesses, git, spawn, resolveBin, push,
-    onFinishColumn: (id) => { finisher?.finish(id, { auto: true }).catch((e) => console.error('finish failed', e.message)) },
+    onFinishColumn: (id) => { finisher.finish(id, { auto: true }).catch((e) => console.error('finish failed', e.message)) },
     notify: (title, body) => new Notification({ title, body: body.slice(0, 200) }).show(),
     worktreeRoot: join(app.getPath('userData'), 'worktrees')
   })
   const breakdowns = createBreakdowns({ db, harnesses, resolveBin, spawn, push })
-  finisher = createFinisher({
+  const finisher = createFinisher({
     db, git, push, isActive: runner.isActive,
     gh: async (args, cwd) => {
       const bin = which('gh')
