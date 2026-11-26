@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import type { FinishMode } from '../shared/types'
 import { createDb } from './db'
 import { createFinisher } from './finish'
@@ -219,4 +219,130 @@ test('cleanup with waitForStop waits for a just-killed session, then removes the
   await expect(finisher.cleanup(id)).rejects.toThrow(/still running/)
   await finisher.cleanup(id, { waitForStop: true })
   expect(existsSync(wt)).toBe(false)
+})
+
+test('publish mode: commits dirty worktree, pushes to origin, records published_at, removes worktree, keeps branch, zero gh calls', async () => {
+  const { db, repo, origin, finisher, gh, task } = setup('publish')
+  const id = await task('feat', { uncommitted: true })
+  const wt = db.getTask(id).worktree_path!
+  expect(existsSync(wt)).toBe(true)
+
+  await finisher.finish(id)
+  const t = db.getTask(id)
+
+  expect(t.published_at).not.toBeNull()
+  expect(t.worktree_path).toBeNull()
+  expect(existsSync(wt)).toBe(false)
+  expect(gh).toHaveLength(0) // zero gh calls
+
+  // Branch retained locally and pushed to origin
+  expect(sh(repo, 'branch', '--list', t.branch!)).toContain(t.branch!)
+  expect(sh(origin, 'branch', '--list', t.branch!)).toContain(t.branch!)
+  expect(sh(origin, 'show', `${t.branch}:feat.txt`)).toBe('feat')
+
+  // Re-finishing after new commits pushes them to the same origin branch
+  const wt2 = join(wt, '..', `wt-${id}-refinish`)
+  await execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'worktree', 'add', wt2, t.branch!], { cwd: repo })
+  writeFileSync(join(wt2, 'extra.txt'), 'extra\n')
+  sh(wt2, 'add', '.')
+  sh(wt2, 'commit', '-qm', 'extra commit')
+  db.setTaskState(id, { worktree_path: wt2 })
+
+  await finisher.finish(id)
+  expect(gh).toHaveLength(0)
+  expect(db.getTask(id).worktree_path).toBeNull()
+  expect(existsSync(wt2)).toBe(false)
+  expect(sh(origin, 'show', `${t.branch}:extra.txt`)).toBe('extra')
+})
+
+test('publish mode without origin remote: records finish_error and leaves worktree untouched', async () => {
+  const { db, repo, finisher, task } = setup('publish')
+  const id = await task('feat', { uncommitted: true })
+  const wt = db.getTask(id).worktree_path!
+  sh(repo, 'remote', 'remove', 'origin')
+
+  await expect(finisher.finish(id)).rejects.toThrow(/no "origin" remote, so the branch cannot be pushed/)
+  const t = db.getTask(id)
+  expect(t.published_at).toBeNull()
+  expect(t.finish_error).toMatch(/Switch the board's finish mode, or add an "origin" remote/)
+  expect(t.worktree_path).toBe(wt)
+  expect(existsSync(wt)).toBe(true)
+  expect(readFileSync(join(wt, 'feat.txt'), 'utf8')).toBe('feat\n')
+})
+
+test('notify mode: manual finish sets finished_at, clears finish_error, leaves attention null, sends no notification', async () => {
+  const { db, finisher, notes, task } = setup('notify')
+  const id = await task('feat', { uncommitted: true })
+  const wt = db.getTask(id).worktree_path!
+  db.setTaskState(id, { finish_error: 'prev error' })
+
+  await finisher.finish(id)
+  const t = db.getTask(id)
+  expect(t.finished_at).not.toBeNull()
+  expect(t.finish_error).toBeNull()
+  expect(t.attention).toBeNull()
+  expect(notes).toHaveLength(0) // manual finish sends no system notification
+  expect(t.worktree_path).toBe(wt)
+  expect(existsSync(wt)).toBe(true)
+})
+
+test('notify mode: auto-finish sets attention: done, finished_at, and notifies with worktree_path (or branch fallback)', async () => {
+  const { db, finisher, notes, task } = setup('notify')
+  const id1 = await task('task-wt')
+  const wt1 = db.getTask(id1).worktree_path!
+  await finisher.finish(id1, { auto: true })
+
+  const t1 = db.getTask(id1)
+  expect(t1.attention).toBe('done')
+  expect(t1.finished_at).not.toBeNull()
+  expect(notes).toContain(`Finished: task-wt | Worktree ready at ${wt1}`)
+
+  // Fallback to t.branch if worktree_path is null
+  const id2 = await task('task-nobranch-wt')
+  db.setTaskState(id2, { worktree_path: null })
+  await finisher.finish(id2, { auto: true })
+
+  const t2 = db.getTask(id2)
+  expect(t2.attention).toBe('done')
+  expect(t2.finished_at).not.toBeNull()
+  expect(notes).toContain(`Finished: task-nobranch-wt | Branch ready: ${t2.branch}`)
+})
+
+test('notify mode: never-ran task quietly skips on auto-finish and throws on manual finish', async () => {
+  const { db, boardId, finisher } = setup('notify')
+  const id = db.createTask(boardId, db.getBoard(boardId).columns[0].id, 'idle')
+
+  await finisher.finish(id, { auto: true })
+  expect(db.getTask(id).finish_error).toBeNull()
+  expect(db.getTask(id).finished_at).toBeNull()
+
+  await expect(finisher.finish(id)).rejects.toThrow(/no branch/)
+})
+
+test('notify mode: makes zero git and gh calls, leaves uncommitted changes and worktree intact', async () => {
+  const { db, git, finisher, gh, task } = setup('notify')
+  const id = await task('feat', { uncommitted: true })
+  const wt = db.getTask(id).worktree_path!
+
+  const isDirtySpy = vi.spyOn(git, 'isDirty')
+  const commitAllSpy = vi.spyOn(git, 'commitAll')
+  const pushSpy = vi.spyOn(git, 'push')
+  const mergeIntoBaseSpy = vi.spyOn(git, 'mergeIntoBase')
+  const removeWorktreeSpy = vi.spyOn(git, 'removeWorktree')
+  const hasRemoteSpy = vi.spyOn(git, 'hasRemote')
+
+  await finisher.finish(id)
+
+  expect(isDirtySpy).not.toHaveBeenCalled()
+  expect(commitAllSpy).not.toHaveBeenCalled()
+  expect(pushSpy).not.toHaveBeenCalled()
+  expect(mergeIntoBaseSpy).not.toHaveBeenCalled()
+  expect(removeWorktreeSpy).not.toHaveBeenCalled()
+  expect(hasRemoteSpy).not.toHaveBeenCalled()
+  expect(gh).toHaveLength(0)
+
+  // Uncommitted changes and worktree still on disk
+  expect(existsSync(wt)).toBe(true)
+  expect(existsSync(join(wt, 'feat.txt'))).toBe(true)
+  expect(sh(wt, 'status', '--porcelain')).toContain('?? feat.txt')
 })
