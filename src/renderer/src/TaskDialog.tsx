@@ -135,8 +135,9 @@ function SessionView({ run, column, open, act }: { run: Run; column?: Column; op
         <span className="ml-2 text-xs text-neutral-500">{run.started_at} UTC</span>
       </summary>
       {run.summary && !live && (
-        <div className="border-t border-neutral-200 px-3 py-2 text-sm whitespace-pre-wrap dark:border-neutral-800">
-          <span className="label">Result</span>{run.summary}
+        <div className="border-t border-neutral-200 px-3 py-2 text-sm dark:border-neutral-800">
+          <span className="label">Result</span>
+          <Markdown text={run.summary} />
         </div>
       )}
       <div className="border-t border-neutral-200 dark:border-neutral-800">{events ? <Transcript events={events} live={live} /> : <p className="p-3 text-xs text-neutral-500">Loading…</p>}</div>

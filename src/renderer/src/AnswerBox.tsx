@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Markdown } from './Markdown'
 
 const IS_MAC = navigator.userAgent.includes('Mac')
 
@@ -22,7 +23,7 @@ export function AnswerBox({ question, onSend, onDiscard }: Props) {
   return (
     <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
       <div className="mb-1 text-xs font-medium text-amber-700 dark:text-amber-300">❓ The agent is waiting for your answer</div>
-      <div className="mb-2 text-sm whitespace-pre-wrap">{question}</div>
+      <Markdown text={question} className="mb-2 text-sm" />
       <textarea autoFocus className="input h-20" placeholder={`Your answer… (${IS_MAC ? '⌘↵' : 'Ctrl+Enter'} to send)`} value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' && (IS_MAC ? e.metaKey : e.ctrlKey)) send() }} />
