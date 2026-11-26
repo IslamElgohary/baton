@@ -13,7 +13,7 @@ export interface FinisherDeps {
   isActive: (taskId: number) => boolean
   push: (e: PushEvent) => void
   /** Shows a system notification (auto-finishes only: a finish the user started shows its result in the app). */
-  notify?: (title: string, body: string) => void
+  notify?: (kind: 'finished', title: string, body: string) => void
   /** How long an auto-finish waits for a just-killed session to exit. */
   activeWaitMs?: number
 }
@@ -156,12 +156,12 @@ export function createFinisher(d: FinisherDeps) {
       const p = withRepoLock(repo, () => run(taskId, auto))
         .then((done) => {
           d.db.setTaskState(taskId, { finish_error: null })
-          if (auto && done) d.notify?.(`Finished: ${task.title}`, done)
+          if (auto && done) d.notify?.('finished', `Finished: ${task.title}`, done)
         })
         .catch((e) => {
           const msg = e instanceof Error ? e.message : String(e)
           d.db.setTaskState(taskId, { finish_error: msg })
-          if (auto) d.notify?.(`Couldn't finish: ${task.title}`, msg)
+          if (auto) d.notify?.('finished', `Couldn't finish: ${task.title}`, msg)
           throw new Error(msg)
         })
         .finally(() => { inflight.delete(taskId); changed() })

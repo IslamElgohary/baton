@@ -61,7 +61,7 @@ function setup(o: { maxConcurrency?: number; maxTurns?: number } = {}) {
     resolveBin: () => process.execPath,
     worktreeRoot: root,
     push: (e) => events.push(e),
-    notify: (title) => notes.push(title)
+    notify: (_kind, title) => notes.push(title)
   }
   const runner = createRunner(deps)
   const trigger = (model: string, prompt = 'go', onSuccess: number | null = null, onFailure: number | null = null): Trigger =>

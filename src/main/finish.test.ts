@@ -31,7 +31,7 @@ function setup(mode: FinishMode) {
   const prs = new Map<string, object>() // `gh pr view <key>` answers
   const notes: string[] = [] // notifications: "title | body"
   const finisher = createFinisher({
-    db, git, push: () => {}, notify: (t, b) => notes.push(`${t} | ${b}`), isActive: (id) => active.has(id), activeWaitMs: 300,
+    db, git, push: () => {}, notify: (_kind, t, b) => notes.push(`${t} | ${b}`), isActive: (id) => active.has(id), activeWaitMs: 300,
     gh: async (args) => {
       gh.push(args)
       if (args[0] === 'pr' && args[1] === 'view') {

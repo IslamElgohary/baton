@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 import { existsSync } from 'node:fs'
-import type { Column, DraftTask, FinishMode, HarnessInfo, Settings, Trigger } from '../shared/types'
+import { NOTIFY_KINDS, type Column, type DraftTask, type FinishMode, type HarnessInfo, type Settings, type Trigger } from '../shared/types'
 import { compactDraft, type Breakdowns } from './breakdown'
 import type { Finisher } from './finish'
 import type { Db } from './db'
@@ -178,10 +178,12 @@ export function createApi(d: ApiDeps) {
     saveSettings(s: Settings) {
       const int = (v: unknown, min: number, max: number) => Number.isInteger(v) && (v as number) >= min && (v as number) <= max
       if (!s || !int(s.maxConcurrency, 1, 16) || !int(s.idleTimeoutMin, 1, 1440) || !int(s.maxTurns, 1, 100)
-        || typeof s.binPaths !== 'object' || s.binPaths === null || Object.values(s.binPaths).some((v) => typeof v !== 'string')) {
+        || typeof s.binPaths !== 'object' || s.binPaths === null || Object.values(s.binPaths).some((v) => typeof v !== 'string')
+        || typeof s.notifications !== 'object' || s.notifications === null || NOTIFY_KINDS.some((k) => typeof s.notifications[k] !== 'boolean')) {
         throw new Error('Invalid settings')
       }
-      d.db.saveSettings({ maxConcurrency: s.maxConcurrency, idleTimeoutMin: s.idleTimeoutMin, maxTurns: s.maxTurns, binPaths: s.binPaths })
+      const notifications = Object.fromEntries(NOTIFY_KINDS.map((k) => [k, s.notifications[k]])) as Settings['notifications']
+      d.db.saveSettings({ maxConcurrency: s.maxConcurrency, idleTimeoutMin: s.idleTimeoutMin, maxTurns: s.maxTurns, binPaths: s.binPaths, notifications })
       harnessCache = null
     },
     async listHarnesses(refresh = false): Promise<HarnessInfo[]> {

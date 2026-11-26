@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
-import type { PushEvent } from '../shared/types'
+import type { NotifyKind, PushEvent } from '../shared/types'
 import { createApi } from './api'
 import { createBreakdowns } from './breakdown'
 import { createFinisher } from './finish'
@@ -30,11 +30,6 @@ const appUrl = process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(rendererFile).
 
 let win: BrowserWindow | null = null
 const push = (e: PushEvent) => win?.webContents.send('push', e)
-const notify = (title: string, body: string) => {
-  const n = new Notification({ title, body: body.slice(0, 200) })
-  n.on('click', showWindow)
-  n.show()
-}
 
 /** Run a command (a harness's interactive sign-in) in a new terminal window. */
 async function openTerminal(argv: string[]) {
@@ -56,6 +51,12 @@ app.whenReady().then(async () => {
   await adoptLoginShellPath()
 
   const db = createDb(join(app.getPath('userData'), 'baton.db'))
+  const notify = (kind: NotifyKind, title: string, body: string) => {
+    if (!db.getSettings().notifications[kind]) return
+    const n = new Notification({ title, body: body.slice(0, 200) })
+    n.on('click', showWindow)
+    n.show()
+  }
   const git = createGit(exec)
   const resolveBin = (id: string) => {
     const h = harnesses.find((x) => x.id === id)
