@@ -5,6 +5,7 @@ import { StatusBadge } from './StatusBadge'
 import { Modal } from './Modal'
 import { Transcript } from './Transcript'
 import { AnswerBox } from './AnswerBox'
+import { Markdown } from './Markdown'
 
 interface Props {
   task: Task
@@ -76,7 +77,10 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
           <span>Column: <b>{column?.name}</b></span>
           {task.branch && <span>Branch: <code>{task.branch}</code></span>}
           {task.worktree_path && (
-            <button className="underline" onClick={() => act(call('openWorktree', task.id))}>Open worktree</button>
+            <>
+              <button className="underline" onClick={() => act(call('openWorktree', task.id))}>Open worktree</button>
+              <button className="underline" onClick={() => navigator.clipboard.writeText(task.worktree_path!)}>Copy path</button>
+            </>
           )}
         </div>
 
@@ -134,8 +138,9 @@ function SessionView({ run, column, open, act }: { run: Run; column?: Column; op
         <span className="ml-2 text-xs text-neutral-500">{run.started_at} UTC</span>
       </summary>
       {run.summary && !live && (
-        <div className="border-t border-neutral-200 px-3 py-2 text-sm whitespace-pre-wrap dark:border-neutral-800">
-          <span className="label">Result</span>{run.summary}
+        <div className="border-t border-neutral-200 px-3 py-2 text-sm dark:border-neutral-800">
+          <span className="label">Result</span>
+          <Markdown text={run.summary} />
         </div>
       )}
       <div className="border-t border-neutral-200 dark:border-neutral-800">{events ? <Transcript events={events} live={live} /> : <p className="p-3 text-xs text-neutral-500">Loading…</p>}</div>
@@ -143,18 +148,27 @@ function SessionView({ run, column, open, act }: { run: Run; column?: Column; op
   )
 }
 
-function ArtifactView({ artifact, column }: { artifact: Artifact; column?: Column }) {
+export function ArtifactView({ artifact, column }: { artifact: Artifact; column?: Column }) {
   const html = /\.html?$/i.test(artifact.name)
+  const markdown = /\.(md|markdown)$/i.test(artifact.name)
+  const [raw, setRaw] = useState(false)
   return (
     <details className="mb-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
       <summary className="cursor-pointer px-3 py-2 text-sm">
         📎 <b>{artifact.name}</b>
         <span className="ml-2 text-xs text-neutral-500">{column?.name ?? ''} · {artifact.updated_at} UTC</span>
         <button className="ml-3 text-xs underline" onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(artifact.content) }}>Copy</button>
+        {markdown && (
+          <button className="ml-3 text-xs underline" onClick={(e) => { e.preventDefault(); setRaw((r) => !r) }}>
+            {raw ? 'Preview' : 'Raw'}
+          </button>
+        )}
       </summary>
       {html
         ? <iframe sandbox="" srcDoc={artifact.content} className="h-96 w-full border-t border-neutral-200 bg-white dark:border-neutral-800" />
-        : <pre className="max-h-96 overflow-auto border-t border-neutral-200 bg-neutral-50 p-3 text-xs whitespace-pre-wrap dark:border-neutral-800 dark:bg-neutral-950">{artifact.content}</pre>}
+        : markdown && !raw
+          ? <div className="max-h-96 overflow-auto border-t border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-900 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100"><Markdown text={artifact.content} /></div>
+          : <pre className="max-h-96 overflow-auto border-t border-neutral-200 bg-neutral-50 p-3 text-xs whitespace-pre-wrap dark:border-neutral-800 dark:bg-neutral-950">{artifact.content}</pre>}
     </details>
   )
 }
@@ -188,8 +202,21 @@ function Blockers({ task, tasks, act }: { task: Task; tasks: Task[]; act: Act })
   )
 }
 
-/** Changes vs base, plus finishing (merge / PR per the board) and worktree cleanup. */
-function FinishPanel({ task, board, busy, act }: { task: Task; board: Board; busy: boolean; act: Act }) {
+export function finishButtonLabel(board: Pick<Board, 'finish_mode' | 'base_branch'>, task: Pick<Task, 'pr_url'>): string {
+  switch (board.finish_mode) {
+    case 'pr':
+      return task.pr_url ? '⇡ Update PR' : '⇡ Open PR'
+    case 'merge':
+      return `⇡ Merge into ${board.base_branch}`
+    case 'publish':
+      return '⇡ Publish branch'
+    case 'notify':
+      return '✓ Mark finished'
+  }
+}
+
+/** Changes vs base, plus finishing (merge / PR / publish / notify per the board) and worktree cleanup. */
+export function FinishPanel({ task, board, busy, act }: { task: Task; board: Board; busy: boolean; act: Act }) {
   const [diff, setDiff] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
   const finish = async () => { setWorking(true); await act(call('finishTask', task.id)); setWorking(false) }
@@ -202,6 +229,8 @@ function FinishPanel({ task, board, busy, act }: { task: Task; board: Board; bus
         {task.pr_url && (
           <button className="text-xs text-purple-700 underline dark:text-purple-300" onClick={() => act(call('openPr', task.id))}>{task.pr_url}</button>
         )}
+        {task.published_at && <span className="text-xs text-purple-700 dark:text-purple-300">✓ pushed to origin/{task.branch}</span>}
+        {task.finished_at && <span className="text-xs text-purple-700 dark:text-purple-300">✓ finished</span>}
         <div className="flex-1" />
         <button className="btn" onClick={async () => setDiff(diff === null ? (await act(call('getChanges', task.id))) ?? '' : null)}>
           {diff === null ? 'Show changes' : 'Hide changes'}
@@ -212,7 +241,7 @@ function FinishPanel({ task, board, busy, act }: { task: Task; board: Board; bus
           }}>Remove worktree</button>
         )}
         <button className="btn-primary" disabled={busy || working} onClick={finish}>
-          {working ? 'Finishing…' : board.finish_mode === 'pr' ? (task.pr_url ? '⇡ Update PR' : '⇡ Open PR') : `⇡ Merge into ${board.base_branch}`}
+          {working ? 'Finishing…' : finishButtonLabel(board, task)}
         </button>
       </div>
       {task.finish_error && <div className="mt-2 rounded bg-red-50 p-2 text-xs whitespace-pre-wrap text-red-700 dark:bg-red-950 dark:text-red-300">{task.finish_error}</div>}

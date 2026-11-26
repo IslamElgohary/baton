@@ -1,6 +1,9 @@
-import { expect, test } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { expect, test, vi } from 'vitest'
 import { createDb } from '../../main/db'
-import { moveLocal } from './Board'
+import type { BoardData, Task } from '../../shared/types'
+import { BoardHeader, CardView, moveLocal, type Meta } from './Board'
 
 test('moveLocal reorders exactly like the main process (no flicker when the refetch lands)', () => {
   const db = createDb(':memory:')
@@ -36,4 +39,80 @@ test('moveLocal skips archived cards like the main process does', () => {
     db.moveTask(ids[i], done.id, index)
     expect(pos(local)).toEqual(pos(db.getBoard(board).tasks))
   }
+})
+
+test('BoardHeader renders finish mode options with exact labels and mode-neutral tooltips', () => {
+  const data: BoardData = {
+    board: {
+      id: 1,
+      name: 'Test Board',
+      repo_path: '/repo/path',
+      base_branch: 'main',
+      finish_mode: 'publish'
+    },
+    columns: [],
+    tasks: [],
+    epics: []
+  }
+  const act = vi.fn().mockResolvedValue([])
+  const html = renderToStaticMarkup(createElement(BoardHeader, { data, act }))
+
+  // Mode-neutral tooltips
+  expect(html).toContain('title="Branch tasks start from (and merge or target PRs into)"')
+  expect(html).toContain('title="What happens when a task enters a finish column"')
+
+  // Finish options and labels
+  expect(html).toContain('<option value="pr">pull request (stacked for epics)</option>')
+  expect(html).toContain('<option value="merge">local merge</option>')
+  expect(html).toContain('<option value="publish" selected="">publish branch</option>')
+  expect(html).toContain('<option value="notify">notify only</option>')
+})
+
+test('CardView renders finish status badges appropriately', () => {
+  const baseTask: Task = {
+    id: 1,
+    board_id: 1,
+    epic_id: null,
+    column_id: 1,
+    position: 0,
+    title: 'Task title',
+    description: '',
+    branch: 'feat/test',
+    worktree_path: null,
+    status: 'idle',
+    artifacts: 0,
+    blocked_by: [],
+    blocked: false,
+    resolved: false,
+    auto_start: 0,
+    merged_at: null,
+    merge_base: null,
+    pr_url: null,
+    published_at: null,
+    finished_at: null,
+    finish_error: null,
+    archived_at: null,
+    attention: null
+  }
+  const meta: Meta = new Map()
+
+  // No badges rendered initially
+  const noBadgesHtml = renderToStaticMarkup(createElement(CardView, { task: baseTask, meta }))
+  expect(noBadgesHtml).not.toContain('merged')
+  expect(noBadgesHtml).not.toContain('PR')
+  expect(noBadgesHtml).not.toContain('published')
+  expect(noBadgesHtml).not.toContain('finished')
+
+  // Each badge rendered when field is set
+  const mergedHtml = renderToStaticMarkup(createElement(CardView, { task: { ...baseTask, merged_at: '2026-01-01' }, meta }))
+  expect(mergedHtml).toContain('merged')
+
+  const prHtml = renderToStaticMarkup(createElement(CardView, { task: { ...baseTask, pr_url: 'https://github.com/pr/1' }, meta }))
+  expect(prHtml).toContain('PR')
+
+  const publishedHtml = renderToStaticMarkup(createElement(CardView, { task: { ...baseTask, published_at: '2026-01-01' }, meta }))
+  expect(publishedHtml).toContain('published')
+
+  const finishedHtml = renderToStaticMarkup(createElement(CardView, { task: { ...baseTask, finished_at: '2026-01-01' }, meta }))
+  expect(finishedHtml).toContain('finished')
 })

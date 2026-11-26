@@ -65,7 +65,7 @@ export function ColumnDialog({ column, columns, harnesses, act, onClose }: Props
         <label className={`flex items-center gap-2 text-sm ${enabled ? 'opacity-50' : ''}`}>
           <input type="checkbox" disabled={enabled} checked={finish && !enabled} onChange={(e) => setFinish(e.target.checked)} />
           ⇡ Finish cards that enter this column
-          <span className="text-xs text-neutral-500">(merge or open a PR, as set on the board{enabled ? '; not available on ⚡ columns' : ''})</span>
+          <span className="text-xs text-neutral-500">(uses the board's finish mode{enabled ? '; not available on ⚡ columns' : ''})</span>
         </label>
 
         <label className="flex items-center gap-2 text-sm font-medium">

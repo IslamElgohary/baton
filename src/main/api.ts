@@ -67,7 +67,7 @@ export function createApi(d: ApiDeps) {
       d.db.updateBoardBase(id, name)
     },
     setFinishMode(id: number, mode: FinishMode) {
-      if (mode !== 'merge' && mode !== 'pr') throw new Error(`Unknown finish mode "${mode}"`)
+      if (!['merge', 'pr', 'publish', 'notify'].includes(mode)) throw new Error(`Unknown finish mode "${mode}"`)
       d.db.setFinishMode(id, mode)
     },
     /** Removes the board's worktree folders too (leftover work is committed; branches stay in the repo). */
@@ -144,6 +144,17 @@ export function createApi(d: ApiDeps) {
     openPr(id: number) {
       const url = d.db.getTask(id).pr_url
       if (!url || !/^https:\/\//.test(url)) throw new Error('This task has no pull request')
+      return d.openExternal(url)
+    },
+    /** Renderer input is untrusted: only http(s) URLs may reach shell.openExternal. */
+    openExternal(url: string) {
+      let protocol: string
+      try {
+        protocol = new URL(url).protocol
+      } catch {
+        throw new Error('Only http(s) links can be opened')
+      }
+      if (protocol !== 'http:' && protocol !== 'https:') throw new Error('Only http(s) links can be opened')
       return d.openExternal(url)
     },
     openWorktree(taskId: number) {

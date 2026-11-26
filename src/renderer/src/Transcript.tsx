@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { SessionEvent } from '../../shared/types'
+import { Markdown } from './Markdown'
 
 type Block =
   | { type: 'user'; text: string }
@@ -67,7 +68,7 @@ export function Transcript({ events, live }: { events: SessionEvent[]; live: boo
               </details>
             )
           case 'assistant':
-            return <div key={i} className="whitespace-pre-wrap">{b.text}</div>
+            return <Markdown key={i} text={b.text} />
           case 'thinking':
             return (
               <details key={i} open={live && i === blocks.length - 1} className="text-xs text-neutral-500">
@@ -94,7 +95,7 @@ export function Transcript({ events, live }: { events: SessionEvent[]; live: boo
             return (
               <div key={i} className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-950/40">
                 <div className="text-xs font-medium text-amber-700 dark:text-amber-300">❓ Agent asked</div>
-                <div className="whitespace-pre-wrap">{b.text}</div>
+                <Markdown text={b.text} />
               </div>
             )
           case 'artifact':

@@ -6,7 +6,7 @@ const NOTIFY_LABELS: Record<NotifyKind, string> = {
   question: 'An agent asks a question',
   done: 'A task is done (its last step succeeded)',
   failed: 'A task failed',
-  finished: 'A task in a finish column was merged or opened as a PR, or could not be'
+  finished: 'A task in a finish column finished or could not finish'
 }
 
 interface Props {

@@ -19,7 +19,7 @@ Baton is a desktop app for running local coding agents through a workflow you de
 - **Questions, artifacts and notifications.** Agents can pause and ask you something; your reply continues the same session. Agents can also save documents (plans, review findings) that later columns use as prompt variables. Desktop notifications and unread rings/counts mark cards and boards when an agent asks a question, finishes, or fails.
 - **Epics and brainstorming.** Describe a larger piece of work—or click **💬 Brainstorm** to let a read-only agent explore the repo, ask clarifying questions, and write the scope and acceptance criteria—then break it down into tasks with dependencies and edit the draft before creating the cards.
 - **Dependencies.** A blocked card waits, then moves to the next ⚡ column and starts once all its blockers have succeeded. Its worktree merges in the blockers' branches first.
-- **Finishing and archiving.** Per board, a finished card either merges into the base branch locally or opens a pull request (tasks inside an epic get stacked PRs). Archive completed cards in **Done** in one click while keeping their history and resolved dependencies.
+- **Finishing and archiving.** Per board, configure one of four finish modes: pull request (stacked for epics), local merge, publish branch, or notify only. Archive completed cards in **Done** in one click while keeping their history and resolved dependencies.
 - **Isolation.** Every card works on its own branch in its own worktree, so several agents can run in parallel (the limit is configurable).
 
 ## Screenshots
@@ -44,7 +44,7 @@ Baton is a desktop app for running local coding agents through a workflow you de
 
 <img src="docs/media/column-trigger.png" alt="Column settings: harness, model, read-only or full-auto, prompt template, success and failure routing">
 
-**Finishing.** Review the diff, then merge into the base branch or open a pull request, automatically when a card reaches Done.
+**Finishing.** Review the diff, then finish via pull request (stacked for epics), local merge, publish branch, or notify only, automatically when a card reaches Done.
 
 <img src="docs/media/finish-diff.png" alt="A merged card with its diff and the review agent's verdict">
 

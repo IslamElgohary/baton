@@ -71,7 +71,12 @@ const STEPS: Step[] = [
   // 4: archived cards: hidden from their (done) column and out of its ordering, still resolving dependents
   ({ addColumn }) => { addColumn('tasks', 'archived_at', 'TEXT') },
   // 5: cards with something the user hasn't seen yet (a question, a finished or failed step)
-  ({ addColumn }) => { addColumn('tasks', 'attention', 'TEXT') }
+  ({ addColumn }) => { addColumn('tasks', 'attention', 'TEXT') },
+  // 6: publish (push the branch) and notify (finish without touching the remote) finish modes
+  ({ addColumn }) => {
+    addColumn('tasks', 'published_at', 'TEXT')
+    addColumn('tasks', 'finished_at', 'TEXT')
+  }
 ]
 
 /**
@@ -385,6 +390,7 @@ export function createDb(file: string) {
     setTaskState(id: number, patch: {
       branch?: string; worktree_path?: string | null
       merged_at?: string | null; merge_base?: string | null; pr_url?: string | null; finish_error?: string | null
+      published_at?: string | null; finished_at?: string | null
       auto_start?: number; attention?: Attention | null
     }) {
       for (const [k, v] of Object.entries(patch)) run(`UPDATE tasks SET ${k} = ? WHERE id = ?`, v, id)

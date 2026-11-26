@@ -38,7 +38,7 @@ export const ARGS: { [K in keyof Api]: Check[] } = {
   listBranches: [id],
   renameBoard: [id, str],
   updateBaseBranch: [id, str],
-  setFinishMode: [id, oneOf('merge', 'pr')],
+  setFinishMode: [id, oneOf('merge', 'pr', 'publish', 'notify')],
   deleteBoard: [id],
   // columns
   addColumn: [id, str],
@@ -63,6 +63,7 @@ export const ARGS: { [K in keyof Api]: Check[] } = {
   removeWorktree: [id],
   getChanges: [id],
   openPr: [id],
+  openExternal: [str],
   openWorktree: [id],
   // epics
   createEpic: [id, str, opt(str), opt(color)],

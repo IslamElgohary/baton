@@ -11,7 +11,7 @@ src/main/db.ts                      createDb(path): schema, versioned upgrades, 
 src/main/session.ts                 startSession(): drives one agent CLI session (turns, protocol, artifacts, kill)
 src/main/runner.ts                  createRunner(deps): queue, per-task sessions, routing, dependencies, auto-start
 src/main/breakdown.ts               createBreakdowns(deps): epic brainstorm + draft task breakdown via read-only sessions
-src/main/finish.ts                  createFinisher(deps): merge or PR, stacked PRs, worktree cleanup
+src/main/finish.ts                  createFinisher(deps): merge, PR, publish, or notify; stacked PRs, worktree cleanup
 src/main/git.ts                     createGit(exec): worktrees, merges, diffs, pushes
 src/main/proc.ts                    exec without a shell, login-shell PATH, which
 src/main/security.ts                isAppUrl(): what counts as the app's own page
@@ -30,7 +30,7 @@ SQLite in the app's data folder. `db.ts` creates the base schema and then applie
 
 | Table | Holds |
 |---|---|
-| `boards` | repository path, base branch, finish mode (`merge` / `pr`) |
+| `boards` | repository path, base branch, finish mode (`merge` / `pr` / `publish` / `notify`) |
 | `columns` | position, done flag, finish-on-enter flag, trigger (JSON: harness, model, permission, prompt, on-success / on-failure column) |
 | `tasks` | column, position, epic, branch, worktree, status, finish state, auto-start flag, archived timestamp, unread attention kind |
 | `task_deps` | blocked-by edges (no cycles; checked on write) |
@@ -72,13 +72,18 @@ Each session runs in its own process group. Stop, card moves and idle timeouts s
 
 ## Finishing
 
-`finish.ts` runs when a card enters a column with *finish on enter*, or from the card dialog. It goes in four steps:
+`finish.ts` runs when a card enters a column with *finish on enter*, or from the card dialog.
+
+In `notify` mode, it performs no git actions: the worktree and uncommitted work are left untouched, completion is recorded (`finished_at`), and auto-finishes send a desktop notification.
+
+In `merge`, `pr`, and `publish` modes:
 
 1. **Commit** leftover changes in the worktree.
-2. **Get the work into the base branch**, depending on the board's finish mode:
-   - `merge`: a `--no-ff` merge in the user's main checkout, refused unless it is clean and on the base branch.
-   - `pr`: push the branch, then reuse the open PR or run `gh pr create`. Epic tasks with unmerged blockers get **stacked PRs**: the PR targets the branch that holds the blockers' work, until that work reaches base.
-3. **Remove** the worktree, keeping the branch.
+2. **Execute the finish action**, depending on the board's finish mode:
+   - `merge`: a `--no-ff` merge into the base branch in the user's main checkout, refused unless clean and on the base branch.
+   - `pr`: push the branch, then reuse an open PR or run `gh pr create`. Epic tasks with unmerged blockers get **stacked PRs**: the PR targets the branch that holds the blockers' work, until that work reaches base.
+   - `publish`: push the branch to `origin` without opening a pull request.
+3. **Remove** the worktree, keeping the branch (unless a new session grabbed it meanwhile).
 
 Finishes are serialized per repository.
 

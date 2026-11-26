@@ -28,6 +28,17 @@ test('updateColumn rejects malformed triggers and unknown permissions (renderer 
   expect(() => api.updateColumn(col.id, { trigger: t as never })).not.toThrow()
 })
 
+test('setFinishMode accepts all four finish modes and rejects unknown ones', () => {
+  const { api, db, boardId } = setup()
+  expect(db.getBoard(boardId).board.finish_mode).toBe('merge') // a board without a remote default
+  for (const mode of ['merge', 'pr', 'publish', 'notify'] as const) {
+    api.setFinishMode(boardId, mode)
+    expect(db.getBoard(boardId).board.finish_mode).toBe(mode)
+  }
+  expect(() => api.setFinishMode(boardId, 'yolo' as never)).toThrow(/Unknown finish mode "yolo"/)
+  expect(db.getBoard(boardId).board.finish_mode).toBe('notify')
+})
+
 test('updateBaseBranch refuses names that are not real branches', async () => {
   const { api, db, boardId } = setup()
   await expect(api.updateBaseBranch(boardId, '--output=/tmp/x')).rejects.toThrow()
@@ -104,4 +115,25 @@ test('seenTask clears the attention mark', () => {
   db.setTaskState(id, { attention: 'failed' })
   api.seenTask(id)
   expect(db.getTask(id).attention).toBeNull()
+})
+
+test('openExternal forwards only http(s) links (renderer input is untrusted)', async () => {
+  const opened: string[] = []
+  const db = createDb(':memory:')
+  const api = createApi({
+    db, harnesses: [fake],
+    runner: {} as never, breakdowns: {} as never, finisher: {} as never, git: {} as never,
+    exec: async () => ({ code: 0, stdout: '', stderr: '' }), resolveBin: () => null,
+    pickDirectory: async () => null, openPath: async () => {},
+    openExternal: async (url: string) => { opened.push(url) }, openTerminal: async () => {}
+  })
+
+  await expect(api.openExternal('http://x')).resolves.toBeUndefined()
+  await expect(api.openExternal('https://x/y?z')).resolves.toBeUndefined()
+  expect(opened).toEqual(['http://x', 'https://x/y?z'])
+
+  for (const bad of ['javascript:alert(1)', 'file:///etc/passwd', 'data:text/html,x', 'HTTPS-less', '']) {
+    expect(() => api.openExternal(bad), bad).toThrow(/Only http\(s\) links can be opened/)
+  }
+  expect(opened).toEqual(['http://x', 'https://x/y?z'])
 })
