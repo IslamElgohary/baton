@@ -58,7 +58,8 @@ test('recover closes cut-off runs; the queue survives, first in first out', () =
   const t1 = db.createTask(id, cols[1].id, 'running')
   const t2 = db.createTask(id, cols[1].id, 'queued')
   const t3 = db.createTask(id, cols[1].id, 'answered')
-  db.setTaskState(t1, { status: 'running' })
+  db.enqueue(t1, false)
+  db.setStatus(t1, 'running')
   db.enqueue(t3, true, 'blue')
   db.enqueue(t2, false)
   const r = db.createRun({ task_id: t1, column_id: cols[1].id, harness: 'h', model: '' })
@@ -68,6 +69,20 @@ test('recover closes cut-off runs; the queue survives, first in first out', () =
   expect(db.queued()).toEqual([{ taskId: t3, resume: true, message: 'blue' }, { taskId: t2, resume: false, message: undefined }])
   db.enqueue(t3, false) // re-queued: goes to the back, old answer dropped
   expect(db.queued()).toEqual([{ taskId: t2, resume: false, message: undefined }, { taskId: t3, resume: false, message: undefined }])
+})
+
+test('task status only changes along the allowed transitions', () => {
+  const { db, id, cols } = setup()
+  const t = db.createTask(id, cols[1].id, 't')
+  expect(() => db.setStatus(t, 'running')).toThrow(/idle → running/) // must be queued first
+  db.enqueue(t, false)
+  db.setStatus(t, 'running')
+  db.setStatus(t, 'waiting')
+  expect(() => db.setStatus(t, 'succeeded')).toThrow(/waiting → succeeded/) // only an answer (queued) resumes it
+  db.setStatus(t, 'failed')
+  expect(() => db.setStatus(t, 'idle')).toThrow()
+  db.enqueue(t, true) // "Run again"
+  expect(db.getTask(t).status).toBe('queued')
 })
 
 test('ids of deleted tasks are not reused (worktree paths are derived from them)', () => {
