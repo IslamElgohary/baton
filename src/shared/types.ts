@@ -47,6 +47,10 @@ export interface Task {
   artifacts: number
   /** Ids of tasks that must be resolved before this task's trigger runs. */
   blocked_by: number[]
+  /** A blocker is still unresolved (computed). */
+  blocked: boolean
+  /** No longer holds up dependents: its latest session succeeded, or it sits in a done column (computed). */
+  resolved: boolean
   /** 1 = once unblocked, move to the next ⚡ column and start (cleared when that happens or you move the card). */
   auto_start: number
   /** Set once finished by a local merge. */

@@ -131,5 +131,3 @@ export function App() {
     </div>
   )
 }
-
-export type Act = <T>(p: Promise<T>) => Promise<T | undefined>

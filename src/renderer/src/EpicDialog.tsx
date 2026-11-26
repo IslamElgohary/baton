@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Breakdown, DraftTask, Epic, HarnessInfo } from '../../shared/types'
-import { call, onPush } from './api'
-import type { Act } from './App'
+import { call, onPush, type Act } from './api'
 import { Modal } from './Modal'
 import { Transcript } from './Transcript'
 

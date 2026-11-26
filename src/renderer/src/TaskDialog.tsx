@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Artifact, Board, Column, Epic, Run, Task } from '../../shared/types'
-import { call, onPush } from './api'
-import type { Act } from './App'
-import { StatusBadge } from './Board'
+import { call, onPush, type Act } from './api'
+import { StatusBadge } from './StatusBadge'
 import { Modal } from './Modal'
 import { Transcript } from './Transcript'
 
@@ -88,7 +87,7 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
               {epics.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
             </select>
           </label>
-          <Blockers task={task} tasks={tasks} columns={columns} act={act} />
+          <Blockers task={task} tasks={tasks} act={act} />
         </div>
 
         <FinishPanel task={task} board={board} busy={busy} act={act} />
@@ -162,9 +161,8 @@ function ArtifactView({ artifact, column }: { artifact: Artifact; column?: Colum
 }
 
 /** Blocked-by chips plus a picker; the task's trigger waits until every blocker succeeded or is in a done column. */
-function Blockers({ task, tasks, columns, act }: { task: Task; tasks: Task[]; columns: Column[]; act: Act }) {
+function Blockers({ task, tasks, act }: { task: Task; tasks: Task[]; act: Act }) {
   const set = (ids: number[]) => act(call('setBlockers', task.id, ids))
-  const isDone = (t: Task) => t.status === 'succeeded' || !!columns.find((c) => c.id === t.column_id)?.is_done // resolved
   const candidates = tasks.filter((t) => t.id !== task.id && !task.blocked_by.includes(t.id))
   return (
     <div className="flex-1">
@@ -174,8 +172,8 @@ function Blockers({ task, tasks, columns, act }: { task: Task; tasks: Task[]; co
           const b = tasks.find((t) => t.id === id)
           if (!b) return null
           return (
-            <span key={id} className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${isDone(b) ? 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300' : 'bg-neutral-200 dark:bg-neutral-800'}`}>
-              {isDone(b) ? '✓' : '🔒'} {b.title}
+            <span key={id} className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${b.resolved ? 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300' : 'bg-neutral-200 dark:bg-neutral-800'}`}>
+              {b.resolved ? '✓' : '🔒'} {b.title}
               <button className="ml-0.5 opacity-60 hover:opacity-100" onClick={() => set(task.blocked_by.filter((x) => x !== id))}>✕</button>
             </span>
           )

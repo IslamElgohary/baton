@@ -129,8 +129,14 @@ test('blockers: self, other board and cycles are refused; isBlocked follows done
   expect(() => db.setBlockers(a, [db.createTask(other, db.getBoard(other).columns[0].id, 'x')])).toThrow(/another board/)
   expect(db.getTask(c).blocked_by).toEqual([b])
   expect(db.isBlocked(b)).toBe(true)
+  expect(db.getTask(b)).toMatchObject({ blocked: true, resolved: false })
+  expect(db.getTask(a)).toMatchObject({ blocked: false, resolved: false })
   db.moveTask(a, cols[4].id, 0) // Done
   expect(db.isBlocked(b)).toBe(false)
+  expect(db.getTask(a).resolved).toBe(true)
+  expect(db.getBoard(id).tasks.find((t) => t.id === b)?.blocked).toBe(false)
+  db.enqueue(c, false); db.setStatus(c, 'running'); db.setStatus(c, 'succeeded')
+  expect(db.getTask(c).resolved).toBe(true) // a succeeded session resolves it outside a done column too
   db.deleteTask(b)
   expect(db.getTask(c).blocked_by).toEqual([]) // deps cascade
 })
