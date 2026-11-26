@@ -22,8 +22,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /**
  * Finishing a task: commit leftover work, then get it into the base branch per the board's finish mode —
- * a local `--no-ff` merge, or a pull request. Epic tasks in PR mode get *stacked* PRs: the PR targets the
- * branch holding its unmerged blockers' work. Afterwards the worktree is removed; the branch is kept.
+ * a local `--no-ff` merge, a pull request, a pushed branch (publish), or nothing at all (notify only).
+ * Epic tasks in PR mode get *stacked* PRs: the PR targets the branch holding its unmerged blockers' work.
+ * Afterwards the worktree is removed (except in notify mode); the branch is kept.
  */
 export function createFinisher(d: FinisherDeps) {
   const inflight = new Map<number, Promise<void>>() // taskId → running finish (a second call joins it)
@@ -102,6 +103,12 @@ export function createFinisher(d: FinisherDeps) {
     }
     if (d.isActive(taskId)) throw new Error('An agent session is still running for this task. Stop it or let it finish first.')
     const { board } = d.db.getBoard(t.board_id)
+
+    if (board.finish_mode === 'notify') {
+      d.db.setTaskState(taskId, { finished_at: new Date().toISOString() })
+      return t.worktree_path ? `Worktree ready at ${t.worktree_path}` : `Branch ready: ${t.branch}`
+    }
+
     const worktree = t.worktree_path && existsSync(t.worktree_path) ? t.worktree_path : null
     if (worktree && await d.git.isDirty(worktree)) await d.git.commitAll(worktree, t.title)
 
@@ -113,6 +120,12 @@ export function createFinisher(d: FinisherDeps) {
         d.db.setTaskState(taskId, { merge_base: mergeBase || null })
       }
       d.db.setTaskState(taskId, { merged_at: new Date().toISOString() })
+    } else if (board.finish_mode === 'publish') {
+      if (!(await d.git.hasRemote(board.repo_path))) {
+        throw new Error('This repository has no "origin" remote, so the branch cannot be pushed. Switch the board\'s finish mode, or add an "origin" remote.')
+      }
+      await d.git.push(board.repo_path, t.branch)
+      d.db.setTaskState(taskId, { published_at: new Date().toISOString() })
     } else {
       if (!(await d.git.hasRemote(board.repo_path))) {
         throw new Error('This repository has no "origin" remote, so a pull request cannot be opened. Switch the board to local merge, or add a remote.')
@@ -140,7 +153,7 @@ export function createFinisher(d: FinisherDeps) {
       await d.git.removeWorktree(board.repo_path, worktree)
       d.db.setTaskState(taskId, { worktree_path: null })
     }
-    return board.finish_mode === 'merge' ? `Merged into ${board.base_branch}` : `Pull request: ${d.db.getTask(taskId).pr_url}`
+    return board.finish_mode === 'merge' ? `Merged into ${board.base_branch}` : board.finish_mode === 'publish' ? `Pushed to origin/${t.branch}` : `Pull request: ${d.db.getTask(taskId).pr_url}`
   }
 
   return {
