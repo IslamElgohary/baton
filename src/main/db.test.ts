@@ -248,3 +248,48 @@ test('listBoards counts the cards wanting attention (not archived ones); archivi
   expect(db.listBoards()[0]).toMatchObject({ attention: 1, questions: 1 })
   expect(db.getTask(fin).attention).toBeNull()
 })
+
+test('all four finish modes persist on createBoard and setFinishMode', () => {
+  const db = createDb(':memory:')
+  const modes = ['merge', 'pr', 'publish', 'notify'] as const
+  for (const mode of modes) {
+    const id = db.createBoard(`b-${mode}`, '/r', 'main', 'h', mode)
+    expect(db.getBoard(id).board.finish_mode).toBe(mode)
+    db.setFinishMode(id, mode)
+    expect(db.getBoard(id).board.finish_mode).toBe(mode)
+  }
+  const id = db.createBoard('b', '/r', 'main', 'h', 'merge')
+  db.setFinishMode(id, 'notify')
+  expect(db.getBoard(id).board.finish_mode).toBe('notify')
+  db.setFinishMode(id, 'publish')
+  expect(db.getBoard(id).board.finish_mode).toBe('publish')
+})
+
+test('upgrade adds published_at/finished_at and keeps existing boards\' finish modes', () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'baton-db-')), 'x.db')
+  let db = createDb(file)
+  const merged = db.createBoard('merged', '/r', 'main', 'h', 'merge')
+  const pr = db.createBoard('pr', '/r', 'main', 'h', 'pr')
+  const col = db.getBoard(merged).columns[1]
+  const task = db.createTask(merged, col.id, 't')
+  db.close()
+  const raw = new DatabaseSync(file) // simulate a DB from before step 6 ran
+  raw.exec('ALTER TABLE tasks DROP COLUMN published_at; ALTER TABLE tasks DROP COLUMN finished_at; PRAGMA user_version = 5')
+  raw.close()
+  db = createDb(file)
+  expect([db.getBoard(merged).board.finish_mode, db.getBoard(pr).board.finish_mode]).toEqual(['merge', 'pr'])
+  const t = db.getTask(task)
+  expect([t.published_at, t.finished_at]).toEqual([null, null])
+  db.setTaskState(task, { published_at: 'now', finished_at: 'later' })
+  expect(db.getTask(task)).toMatchObject({ published_at: 'now', finished_at: 'later' })
+})
+
+test('setTaskState sets and clears published_at and finished_at', () => {
+  const { db, id, cols } = setup()
+  const task = db.createTask(id, cols[0].id, 't')
+  expect(db.getTask(task)).toMatchObject({ published_at: null, finished_at: null })
+  db.setTaskState(task, { published_at: '2024-01-01', finished_at: '2024-01-02' })
+  expect(db.getTask(task)).toMatchObject({ published_at: '2024-01-01', finished_at: '2024-01-02' })
+  db.setTaskState(task, { published_at: null, finished_at: null })
+  expect(db.getTask(task)).toMatchObject({ published_at: null, finished_at: null })
+})

@@ -134,7 +134,7 @@ export function createRunner(d: RunnerDeps) {
       active.set(taskId, a)
       if (reuse) { d.db.reopenRun(runId); d.db.setRunQuestion(runId, null) }
       // New work isn't merged yet; auto-start has done its job once a session runs.
-      d.db.setTaskState(taskId, { merged_at: null, merge_base: null, auto_start: 0 })
+      d.db.setTaskState(taskId, { merged_at: null, published_at: null, finished_at: null, merge_base: null, auto_start: 0 })
       changed()
 
       const harness = d.harnesses.find((h) => h.id === trigger.harness)

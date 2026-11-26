@@ -10,8 +10,9 @@ export interface Trigger {
   onFailure: number | null
 }
 
-/** How a finished task gets into the base branch. */
-export type FinishMode = 'merge' | 'pr'
+/** How a finished task gets into the base branch: a local merge, a pull request, a pushed branch (publish), or
+ * nothing at all (notify only). */
+export type FinishMode = 'merge' | 'pr' | 'publish' | 'notify'
 
 export interface Board {
   id: number
@@ -27,7 +28,7 @@ export interface Column {
   name: string
   position: number
   is_done: number
-  /** 1 = finish cards that enter this column (merge or PR, per the board's finish mode). */
+  /** 1 = finish cards that enter this column (merged, PR'd, published or just notified, per the board's finish mode). */
   finish_on_enter: number
   trigger: Trigger | null
 }
@@ -59,6 +60,10 @@ export interface Task {
   merge_base: string | null
   /** Set once finished by opening a pull request. */
   pr_url: string | null
+  /** Set once finished by pushing the branch (publish mode). */
+  published_at: string | null
+  /** Set once a finish ran in notify mode: the card is done, nothing was merged, pushed or opened. */
+  finished_at: string | null
   /** Why the last finish attempt failed (cleared on success). */
   finish_error: string | null
   /** Set when archived from a done column: hidden there, still resolves dependents. Moving the card clears it. */
