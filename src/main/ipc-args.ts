@@ -51,6 +51,7 @@ export const ARGS: { [K in keyof Api]: Check[] } = {
   setBlockers: [id, arrayOf(id)],
   deleteTask: [id],
   moveTask: [id, id, index],
+  archiveDone: [id],
   retryTask: [id],
   answerQuestion: [id, str],
   listArtifacts: [id],

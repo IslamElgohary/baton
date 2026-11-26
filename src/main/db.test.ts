@@ -207,3 +207,28 @@ test('settings saved before notification switches existed get them all on', () =
   db.saveSettings({ notifications: { done: false } as never })
   expect(db.getSettings().notifications).toEqual({ question: true, done: false, failed: true, finished: true })
 })
+
+test('archiveDone hides a done column\'s cards from its ordering; they still resolve dependents; moving restores', () => {
+  const db = createDb(':memory:')
+  const board = db.createBoard('b', '/r', 'main', 'h')
+  const cols = db.getBoard(board).columns
+  const done = cols.find((c) => c.is_done)!
+  const [a, b, live, later] = ['a', 'b', 'live', 'later'].map((t) => db.createTask(board, done.id, t))
+  db.setStatus(live, 'queued') // a card with a session queued stays
+  const dependent = db.createTask(board, cols[0].id, 'dependent')
+  db.setBlockers(dependent, [a])
+
+  expect(() => db.archiveDone(cols[0].id)).toThrow(/done column/)
+  expect(db.archiveDone(done.id)).toBe(3)
+  const get = (id: number) => db.getBoard(board).tasks.find((t) => t.id === id)!
+  expect([a, b, later].every((id) => get(id).archived_at)).toBe(true)
+  expect([get(live).archived_at, get(live).position]).toEqual([null, 0]) // renumbered without the archived ones
+  expect(get(dependent).blocked).toBe(false) // an archived card in a done column still counts as finished
+  expect(db.createTask(board, done.id, 'new')).toBeGreaterThan(0)
+  expect(db.getBoard(board).tasks.filter((t) => t.column_id === done.id && !t.archived_at).map((t) => [t.title, t.position]))
+    .toEqual([['live', 0], ['new', 1]])
+  expect(() => db.deleteColumn(done.id)).toThrow(/archived/)
+
+  db.moveTask(b, done.id, 1) // restore in place
+  expect([get(b).archived_at, get(b).position]).toEqual([null, 1])
+})

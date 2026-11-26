@@ -117,6 +117,7 @@ export function createApi(d: ApiDeps) {
       }
     },
     retryTask: (id: number) => d.runner.retry(id),
+    archiveDone: (columnId: number) => d.db.archiveDone(columnId),
     answerQuestion(id: number, text: string) {
       if (!text.trim()) throw new Error('Answer is empty')
       d.runner.answer(id, text.trim())
