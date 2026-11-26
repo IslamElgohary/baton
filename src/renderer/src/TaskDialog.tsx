@@ -77,7 +77,10 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
           <span>Column: <b>{column?.name}</b></span>
           {task.branch && <span>Branch: <code>{task.branch}</code></span>}
           {task.worktree_path && (
-            <button className="underline" onClick={() => act(call('openWorktree', task.id))}>Open worktree</button>
+            <>
+              <button className="underline" onClick={() => act(call('openWorktree', task.id))}>Open worktree</button>
+              <button className="underline" onClick={() => navigator.clipboard.writeText(task.worktree_path!)}>Copy path</button>
+            </>
           )}
         </div>
 
@@ -199,8 +202,21 @@ function Blockers({ task, tasks, act }: { task: Task; tasks: Task[]; act: Act })
   )
 }
 
-/** Changes vs base, plus finishing (merge / PR per the board) and worktree cleanup. */
-function FinishPanel({ task, board, busy, act }: { task: Task; board: Board; busy: boolean; act: Act }) {
+export function finishButtonLabel(board: Pick<Board, 'finish_mode' | 'base_branch'>, task: Pick<Task, 'pr_url'>): string {
+  switch (board.finish_mode) {
+    case 'pr':
+      return task.pr_url ? '⇡ Update PR' : '⇡ Open PR'
+    case 'merge':
+      return `⇡ Merge into ${board.base_branch}`
+    case 'publish':
+      return '⇡ Publish branch'
+    case 'notify':
+      return '✓ Mark finished'
+  }
+}
+
+/** Changes vs base, plus finishing (merge / PR / publish / notify per the board) and worktree cleanup. */
+export function FinishPanel({ task, board, busy, act }: { task: Task; board: Board; busy: boolean; act: Act }) {
   const [diff, setDiff] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
   const finish = async () => { setWorking(true); await act(call('finishTask', task.id)); setWorking(false) }
@@ -213,6 +229,8 @@ function FinishPanel({ task, board, busy, act }: { task: Task; board: Board; bus
         {task.pr_url && (
           <button className="text-xs text-purple-700 underline dark:text-purple-300" onClick={() => act(call('openPr', task.id))}>{task.pr_url}</button>
         )}
+        {task.published_at && <span className="text-xs text-purple-700 dark:text-purple-300">✓ pushed to origin/{task.branch}</span>}
+        {task.finished_at && <span className="text-xs text-purple-700 dark:text-purple-300">✓ finished</span>}
         <div className="flex-1" />
         <button className="btn" onClick={async () => setDiff(diff === null ? (await act(call('getChanges', task.id))) ?? '' : null)}>
           {diff === null ? 'Show changes' : 'Hide changes'}
@@ -223,7 +241,7 @@ function FinishPanel({ task, board, busy, act }: { task: Task; board: Board; bus
           }}>Remove worktree</button>
         )}
         <button className="btn-primary" disabled={busy || working} onClick={finish}>
-          {working ? 'Finishing…' : board.finish_mode === 'pr' ? (task.pr_url ? '⇡ Update PR' : '⇡ Open PR') : `⇡ Merge into ${board.base_branch}`}
+          {working ? 'Finishing…' : finishButtonLabel(board, task)}
         </button>
       </div>
       {task.finish_error && <div className="mt-2 rounded bg-red-50 p-2 text-xs whitespace-pre-wrap text-red-700 dark:bg-red-950 dark:text-red-300">{task.finish_error}</div>}
