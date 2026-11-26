@@ -64,7 +64,7 @@ export function createRunner(d: RunnerDeps) {
     if (!resume) d.db.closeOpenRuns(taskId, 'Card moved before the question was answered')
     const col = d.db.getColumn(task.column_id)
     if (col?.trigger) d.db.enqueue(taskId, resume)
-    else if (['queued', 'running', 'waiting'].includes(task.status)) d.db.setTaskState(taskId, { status: 'idle' })
+    else if (['queued', 'running', 'waiting'].includes(task.status)) d.db.setStatus(taskId, 'idle')
     changed()
     if (col?.finish_on_enter && !col.trigger) d.onFinishColumn?.(taskId)
     pump() // also advances/starts dependents this card may have just unblocked
@@ -101,7 +101,7 @@ export function createRunner(d: RunnerDeps) {
       // Skip tasks whose previous session is still shutting down, and tasks whose blockers aren't done.
       const q = d.db.queued().find((q) => !active.has(q.taskId) && !d.db.isBlocked(q.taskId))
       if (!q) break
-      d.db.setTaskState(q.taskId, { status: 'running' }) // off the queue now, even if start() throws early
+      d.db.setStatus(q.taskId, 'running') // off the queue now, even if start() throws early
       start(q).catch((e) => console.error('session start failed', e))
     }
   }
@@ -111,7 +111,7 @@ export function createRunner(d: RunnerDeps) {
     const col = d.db.getColumn(task.column_id)
     const trigger = col?.trigger
     if (!col || !trigger) { // trigger removed while queued
-      d.db.setTaskState(taskId, { status: 'idle' })
+      d.db.setStatus(taskId, 'idle')
       return changed()
     }
     const { board } = d.db.getBoard(task.board_id)
@@ -126,7 +126,7 @@ export function createRunner(d: RunnerDeps) {
     const a: Active = { stop: null, forceStop: null, runId, columnId: col.id, killReason: null, route: true, move: true }
     active.set(taskId, a)
     // New work isn't merged yet; auto-start has done its job once a session runs.
-    d.db.setTaskState(taskId, { status: 'running', merged_at: null, merge_base: null, auto_start: 0 })
+    d.db.setTaskState(taskId, { merged_at: null, merge_base: null, auto_start: 0 })
     changed()
 
     const record = (event: SessionEvent) => {
@@ -233,14 +233,14 @@ export function createRunner(d: RunnerDeps) {
       if (o.type === 'question' && a.route && !a.killReason) {
         // Session stays open (ended_at NULL) until the user answers; it doesn't hold a concurrency slot.
         d.db.setRunQuestion(a.runId, o.text)
-        d.db.setTaskState(taskId, { status: 'waiting' })
+        d.db.setStatus(taskId, 'waiting')
         d.notify?.(`Question: ${d.db.getTask(taskId).title}`, o.text)
       } else {
         const ok = o.type === 'done'
         d.db.finishRun(a.runId, ok, o.type === 'question' ? (a.killReason ?? 'Stopped') : o.text)
         if (a.route) {
           const task = d.db.getTask(taskId)
-          d.db.setTaskState(taskId, { status: ok ? 'succeeded' : 'failed' })
+          d.db.setStatus(taskId, ok ? 'succeeded' : 'failed')
           const trigger = d.db.getColumn(a.columnId)?.trigger
           const next = ok ? trigger?.onSuccess : trigger?.onFailure
           if (next && a.move && task.column_id === a.columnId && d.db.getColumn(next)?.board_id === task.board_id) {
@@ -272,16 +272,17 @@ export function createRunner(d: RunnerDeps) {
     pump,
     /** Stop a running, queued or waiting task; it stays in its column, marked failed. */
     stop(taskId: number) {
+      const { status } = d.db.getTask(taskId)
       const a = active.get(taskId)
-      if (a) {
+      if (status === 'running' && a) {
         a.move = false
-        kill(taskId, 'Stopped by user', true)
-      } else {
-        d.db.closeOpenRuns(taskId, 'Stopped by user')
-        const t = d.db.getTask(taskId)
-        if (t.status === 'queued' || t.status === 'waiting') d.db.setTaskState(taskId, { status: t.status === 'waiting' ? 'failed' : 'idle' })
-        changed()
+        return kill(taskId, 'Stopped by user', true) // the session's end marks it failed
       }
+      // Queued (maybe behind its previous session, which was already told to exit and won't route it) or waiting.
+      d.db.closeOpenRuns(taskId, 'Stopped by user')
+      if (status === 'queued') d.db.setStatus(taskId, 'idle')
+      else if (status === 'waiting' || status === 'running') d.db.setStatus(taskId, 'failed') // running: start() died early
+      changed()
     },
     /** Before deleting a task: kill its session without routing (deleting the row takes it off the queue). */
     forget(taskId: number) {

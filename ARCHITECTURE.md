@@ -55,7 +55,7 @@ Each session runs in its own process group. Stop, card moves and idle timeouts s
 
 ## Runner
 
-`runner.ts` holds the active sessions (one per task). The queue is the database: tasks with status `queued`, first in first out, each with what to send when it starts (a fresh run, "Run again", or the user's answer).
+`runner.ts` holds the active sessions (one per task). The queue is the database: tasks with status `queued`, first in first out, each with what to send when it starts (a fresh run, "Run again", or the user's answer). Which status may follow which is one table, `NEXT_STATUS` in `db.ts`; `db.setStatus` throws on anything else, so a wrong transition fails a test instead of leaving a card stuck.
 
 1. **A card enters a ⚡ column.** It is queued. The queue starts tasks up to the parallel-runs limit, skipping blocked ones.
 2. **A session starts.**

@@ -174,6 +174,22 @@ test('a leftover process holding stdout does not keep the session open', async (
   expect(Date.now() - t0).toBeLessThan(6000)
 }, 10_000)
 
+test('stop on a card queued behind its own exiting session leaves it idle', async () => {
+  const { db, boardId, plan, build, runner, trigger } = setup()
+  db.updateColumn(plan.id, { trigger: trigger('stubborn') }) // ignores SIGTERM: keeps exiting for 5s
+  db.updateColumn(build.id, { trigger: trigger('echo') })
+  const id = db.createTask(boardId, plan.id, 'x')
+  runner.onEnter(id)
+  await until(() => db.listRuns(id)[0]?.session_id != null)
+  db.moveTask(id, build.id, 0)
+  runner.onEnter(id) // queued: the old session still holds the task
+  expect(db.getTask(id).status).toBe('queued')
+  runner.stop(id)
+  expect(db.getTask(id).status).toBe('idle')
+  await until(() => !runner.isActive(id), 8000)
+  expect(db.getTask(id)).toMatchObject({ status: 'idle', column_id: build.id }) // the old session didn't route it
+}, 10_000)
+
 test('[QUESTION] pauses the session; the answer resumes it and artifacts are saved', async () => {
   const { db, boardId, plan, build, runner, trigger, events } = setup({ maxConcurrency: 1 })
   db.updateColumn(plan.id, { trigger: trigger('ask', '{{artifact.choice.md}}', build.id) })
@@ -298,7 +314,7 @@ test('a dependent whose blocker resolved earlier (e.g. before a restart) is adva
   db.updateColumn(plan.id, { trigger: trigger('echo') })
   const done = db.getBoard(boardId).columns.find((c) => c.is_done)!
   const blocker = db.createTask(boardId, done.id, 'blocker')
-  db.setTaskState(blocker, { status: 'succeeded' }) // resolved long ago — no transition to react to
+  for (const s of ['queued', 'running', 'succeeded'] as const) db.setStatus(blocker, s) // resolved long ago — no transition to react to
   const dep = db.createTask(boardId, backlog.id, 'dep')
   db.setBlockers(dep, [blocker])
   expect(db.getTask(dep).auto_start).toBe(1)

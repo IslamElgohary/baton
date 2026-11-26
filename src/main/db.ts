@@ -71,6 +71,19 @@ const STEPS: Step[] = [
 ]
 
 /** Tasks with their artifact count and blockers. */
+/**
+ * The task lifecycle: which status may follow which. Only the runner changes statuses (and recover(), after a
+ * restart: running → failed). queued = waiting for a free slot (or for its blockers); waiting = paused on a question.
+ */
+const NEXT_STATUS: Record<TaskStatus, TaskStatus[]> = {
+  idle: ['queued'],
+  queued: ['queued', 'running', 'idle'], // started; or moved to a column without a trigger, or stopped
+  running: ['queued', 'idle', 'waiting', 'succeeded', 'failed'], // moved while running; or a session result
+  waiting: ['queued', 'idle', 'failed'], // answered (or run again); moved away; stopped
+  succeeded: ['queued'],
+  failed: ['queued']
+}
+
 const TASKS = `SELECT t.*, (SELECT count(*) FROM artifacts a WHERE a.task_id = t.id) AS artifacts,
   (SELECT group_concat(blocked_by_id) FROM task_deps d WHERE d.task_id = t.id) AS blocked_by FROM tasks t`
 
@@ -339,8 +352,14 @@ export function createDb(file: string) {
       })
     },
     /** Internal fields, written by the runner and the finisher. */
+    /** Change a task's status; throws on a change the lifecycle doesn't allow (a bug). */
+    setStatus(id: number, to: TaskStatus) {
+      const from = mustTask(id).status
+      if (!NEXT_STATUS[from].includes(to)) throw new Error(`Task ${id}: status can't change ${from} → ${to}`)
+      run('UPDATE tasks SET status = ? WHERE id = ?', to, id)
+    },
     setTaskState(id: number, patch: {
-      status?: TaskStatus; branch?: string; worktree_path?: string | null
+      branch?: string; worktree_path?: string | null
       merged_at?: string | null; merge_base?: string | null; pr_url?: string | null; finish_error?: string | null
       auto_start?: number
     }) {
@@ -426,6 +445,7 @@ export function createDb(file: string) {
     // queue: tasks with status 'queued', first in first out
     /** `resume`: continue the column's last session; `message`: its first turn (the user's answer). */
     enqueue(taskId: number, resume: boolean, message: string | null = null) {
+      mustTask(taskId) // every status may be queued (see NEXT_STATUS)
       run(`UPDATE tasks SET status = 'queued', queued_at = (SELECT COALESCE(MAX(queued_at), 0) + 1 FROM tasks),
            queued_resume = ?, queued_message = ? WHERE id = ?`, resume ? 1 : 0, message, taskId)
     },

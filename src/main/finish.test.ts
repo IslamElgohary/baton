@@ -51,7 +51,8 @@ function setup(mode: FinishMode) {
     for (const b of o.blockers ?? []) await git.merge(wt, db.getTask(b).branch!)
     writeFileSync(join(wt, `${title}.txt`), `${title}\n`)
     if (!o.uncommitted) await git.commitAll(wt, title)
-    db.setTaskState(id, { branch, worktree_path: wt, status: 'succeeded' })
+    db.setTaskState(id, { branch, worktree_path: wt })
+    for (const s of ['queued', 'running', 'succeeded'] as const) db.setStatus(id, s)
     return id
   }
   return { db, boardId, repo, origin, finisher, gh, prs, task, git, setActive: (s: Set<number>) => { active = s } }
