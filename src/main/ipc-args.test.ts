@@ -9,6 +9,7 @@ test('valid calls pass', () => {
   expect(() => checkArgs('updateColumn', [1, { name: 'x', is_done: 1, trigger: null }])).not.toThrow()
   expect(() => checkArgs('approveDraft', [1, [{ title: 'a', description: '', blockedBy: [] }, { title: 'b', description: 'd', blockedBy: [0] }]])).not.toThrow()
   expect(() => checkArgs('setFinishMode', [1, 'pr'])).not.toThrow()
+  for (const mode of ['merge', 'pr', 'publish', 'notify']) expect(() => checkArgs('setFinishMode', [1, mode])).not.toThrow()
   expect(() => checkArgs('startBrainstorm', [1, 'fake', ''])).not.toThrow()
   expect(() => checkArgs('answerBreakdown', [1, 'yes'])).not.toThrow()
   expect(() => checkArgs('openExternal', ['https://a'])).not.toThrow()
@@ -18,7 +19,8 @@ test('malformed calls are rejected before reaching the method', () => {
   const bad: [string, unknown[]][] = [
     ['getBoard', ['1']], ['getBoard', [0]], ['getBoard', [1.5]], ['getBoard', []],
     ['moveTask', [3, 7, -1]], ['getBoard', [1, 'extra']],
-    ['setFinishMode', [1, 'yolo']],
+    ['setFinishMode', [1, 'yolo']], ['setFinishMode', [1, '']], ['setFinishMode', [1, null]],
+    ['setFinishMode', [1, 'Merge']], ['setFinishMode', [1, 'pr', 'extra']],
     ['updateColumn', [1, { name: 'x', evil: true }]], ['updateColumn', [1, { is_done: 2 }]], ['updateColumn', [1, null]],
     ['updateTask', [1, { epic_id: 'x' }]], ['updateTask', [1, { __proto__: 1, toString: 'x' }]],
     ['createEpic', [1, 'E', '', 'red']], ['setBlockers', [1, [2, 'x']]],
