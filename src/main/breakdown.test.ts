@@ -32,6 +32,32 @@ test('a breakdown session stores the tasks.json artifact as the epic draft', asy
   expect(events.some((e) => e.type === 'breakdown' && e.event.kind === 'artifact')).toBe(true)
 })
 
+test('an invalid tasks.json is sent back to the agent with the JSON error, in the same session', async () => {
+  const db = createDb(':memory:')
+  db.saveSettings({ maxConcurrency: 3, idleTimeoutMin: 1, maxTurns: 3, binPaths: {} })
+  const epic = db.createEpic(db.createBoard('b', process.cwd(), 'main', 'fake'), 'E', 'x', '#000')
+  const bd = createBreakdowns({ db, harnesses: [fake], resolveBin: () => process.execPath, spawn, push: () => {} })
+  bd.start(epic, 'fake', 'baddraft')
+  const end = Date.now() + 5000
+  while (bd.get(epic).running && Date.now() < end) await new Promise((r) => setTimeout(r, 20))
+  expect(bd.get(epic).error).toBeNull()
+  expect(db.getEpic(epic)?.draft).toEqual([{ title: 'Fixed', description: 'show a "hint"', blockedBy: [] }])
+  const asked = bd.get(epic).events.filter((e) => e.kind === 'user')
+  expect(asked).toHaveLength(2)
+  expect(asked[1].kind === 'user' && asked[1].text).toMatch(/not valid JSON \(.+\)/)
+})
+
+test('a breakdown that never saves a valid tasks.json says why', async () => {
+  const db = createDb(':memory:')
+  db.saveSettings({ maxConcurrency: 3, idleTimeoutMin: 1, maxTurns: 1, binPaths: {} }) // no turn left to fix it
+  const epic = db.createEpic(db.createBoard('b', process.cwd(), 'main', 'fake'), 'E', 'x', '#000')
+  const bd = createBreakdowns({ db, harnesses: [fake], resolveBin: () => process.execPath, spawn, push: () => {} })
+  bd.start(epic, 'fake', 'baddraft')
+  const end = Date.now() + 5000
+  while (bd.get(epic).running && Date.now() < end) await new Promise((r) => setTimeout(r, 20))
+  expect(bd.get(epic).error).toMatch(/tasks\.json.*not valid JSON/s)
+})
+
 test('a breakdown that ends without a draft reports an error', async () => {
   const db = createDb(':memory:')
   db.saveSettings({ maxConcurrency: 3, idleTimeoutMin: 1, maxTurns: 3, binPaths: {} })
