@@ -31,7 +31,7 @@
     "build": "electron-vite build",
     "prestart": "node -e \"require('electron')\"",
     "start": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/renderer/tsconfig.json",
     "test": "vitest run src",
     "e2e": "vitest run e2e",
     "icon": "electron scripts/icon.cjs",
