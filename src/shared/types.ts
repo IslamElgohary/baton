@@ -80,11 +80,14 @@ export interface Epic {
   draft: DraftTask[] | null
 }
 
-/** Live state of an epic's "Break down" session (kept in memory). */
+/** Live state of an epic's "Break down" or brainstorm session (kept in memory). */
 export interface Breakdown {
   running: boolean
   events: SessionEvent[]
   error: string | null
+  /** Set while the session is paused on a [QUESTION], waiting for `answer()`. */
+  question: string | null
+  mode?: 'brainstorm' | 'breakdown'
 }
 
 /** A document an agent saved for the user and later steps (plan, report…). Same name = replaced. */

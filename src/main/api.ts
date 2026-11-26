@@ -157,6 +157,8 @@ export function createApi(d: ApiDeps) {
     },
     getBreakdown: (epicId: number) => d.breakdowns.get(epicId),
     startBreakdown: (epicId: number, harness: string, model: string) => d.breakdowns.start(epicId, harness, model),
+    startBrainstorm: (epicId: number, harness: string, model: string) => d.breakdowns.startBrainstorm(epicId, harness, model),
+    answerBreakdown: (epicId: number, text: string) => d.breakdowns.answer(epicId, text),
     stopBreakdown: (epicId: number) => d.breakdowns.stop(epicId),
     discardDraft: (epicId: number) => d.db.setEpicDraft(epicId, null),
     /** Create the (possibly edited) draft's tasks in the first column. */

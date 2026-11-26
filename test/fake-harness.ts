@@ -27,6 +27,9 @@ process.stdin.on('data', (c) => {
     if (scenario === 'ask') out({ t: 'end', v: resume
       ? 'Using ' + first + '\\n<artifact name="choice.md">\\ncolor: ' + first + '\\n</artifact>\\n[DONE]'
       : 'Need input.\\n[QUESTION] Which color?' })
+    if (scenario === 'brainstorm') out({ t: 'end', v: resume
+      ? 'Got it.\\n<artifact name="epic.md">\\n# Auth epic\\n\\nGoals: sign in with the providers.\\nScope: web only.\\nAcceptance: tests pass.\\n</artifact>\\n[DONE]'
+      : 'I need a detail first.\\n[QUESTION] Which login providers?' })
     if (scenario === 'continue') out({ t: 'end', v: turn < 2 ? 'Launched a subagent, waiting.' : 'Finished.\\n[DONE]' })
     if (scenario === 'never') out({ t: 'end', v: 'still going' })
     if (scenario === 'fail') out({ t: 'end', v: 'boom\\n[FAILED] cannot' })

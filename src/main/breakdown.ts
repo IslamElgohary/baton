@@ -1,7 +1,7 @@
 import type { Breakdown, DraftTask, PushEvent } from '../shared/types'
 import type { Db } from './db'
 import type { Harness } from './harnesses/types'
-import { protocol, startSession, type Spawn } from './session'
+import { protocol, startSession, type Marker, type Spawn } from './session'
 
 export interface BreakdownDeps {
   db: Db
@@ -12,6 +12,7 @@ export interface BreakdownDeps {
 }
 
 export const DRAFT_ARTIFACT = 'tasks.json'
+export const EPIC_ARTIFACT = 'epic.md'
 
 export function breakdownPrompt(title: string, description: string): string {
   return `Break this epic down into tasks for a kanban board.
@@ -25,6 +26,25 @@ Investigate the repository as needed, then save an artifact named ${DRAFT_ARTIFA
 
 Each task must be small enough for one agent to plan, build and review on its own branch. Give each a clear, testable
 description. List tasks in the order they should be done; blockedBy may only point to earlier tasks.`
+}
+
+export function brainstormPrompt(title: string, description: string): string {
+  return `Help the user define an epic for a kanban board through a focused conversation.
+
+Epic: ${title}
+
+${description.trim() || '(No description yet — work out the details with the user.)'}
+
+Investigate the repository as needed so your questions are grounded in the real codebase. Ask the user clarifying
+questions one round at a time using [QUESTION] to define the epic's goals, scope, and acceptance criteria. Ask only
+what you need and wait for the answer before asking the next question.
+
+When enough detail has been gathered, save the final epic specification as an artifact named ${EPIC_ARTIFACT}:
+<artifact name="${EPIC_ARTIFACT}">
+…the epic's goals, scope, what is out of scope, and acceptance criteria…
+</artifact>
+
+Then end with [DONE].`
 }
 
 /** Drop rows without a title and remap blockedBy to the new positions (earlier tasks only, no duplicates). */
@@ -67,78 +87,206 @@ export function draftProblem(text: string): string {
   return 'it must be a non-empty JSON array of tasks, each with a "title"'
 }
 
-/** "Break down" sessions: one read-only agent session per epic, in the board's repo. Live state kept in memory. */
+type Mode = 'breakdown' | 'brainstorm'
+type Qa = { question: string; answer: string }
+
+interface EpicSession extends Breakdown {
+  mode: Mode
+  kill?: (reason: string) => void
+  forceKill?: () => void
+  sessionId: string | null
+  harnessId: string
+  model: string
+  /** The prompt sent on the first turn (before the harness note and protocol), reused when no session id exists. */
+  promptBase: string
+  /** Questions and answers so far, for continuing without a resumable harness session. */
+  qaHistory: Qa[]
+  /** Latest usable tasks.json content. */
+  draft: DraftTask[] | null
+  /** Why the latest tasks.json artifact was rejected. */
+  draftProblem: string
+  /** Latest epic.md content saved by a brainstorm session. */
+  epicArtifact: string | null
+}
+
+/** "Break down" and brainstorm sessions: one read-only agent session per epic, in the board's repo. State in memory. */
 export function createBreakdowns(d: BreakdownDeps) {
-  const state = new Map<number, Breakdown & { kill?: (reason: string) => void; forceKill?: () => void }>()
+  const state = new Map<number, EpicSession>()
+  const changed = () => d.push({ type: 'changed' })
 
-  return {
-    get(epicId: number): Breakdown {
-      const s = state.get(epicId)
-      return s ? { running: s.running, events: s.events, error: s.error } : { running: false, events: [], error: null }
-    },
+  function fail(s: EpicSession, e: unknown) {
+    s.running = false
+    s.question = null
+    s.error = e instanceof Error ? e.message : String(e)
+    changed()
+  }
 
-    start(epicId: number, harnessId: string, model: string) {
-      if (state.get(epicId)?.running) throw new Error('A breakdown is already running for this epic')
-      const epic = d.db.getEpic(epicId)
-      if (!epic) throw new Error(`Epic ${epicId} not found`)
-      if (!epic.description.trim()) throw new Error('Write a description for the epic first')
-      const harness = d.harnesses.find((h) => h.id === harnessId)
-      if (!harness) throw new Error(`Unknown harness "${harnessId}"`)
-      const bin = d.resolveBin(harness.id)
-      if (!bin) throw new Error(`${harness.name} CLI (${harness.bin}) not found. Check Settings.`)
-      const { board } = d.db.getBoard(epic.board_id)
-      const settings = d.db.getSettings()
+  /** Continue a session with the user's answer, falling back to the whole Q&A history when it can't be resumed. */
+  function answerTurn(s: EpicSession, answer: string): string {
+    if (s.sessionId) return answer
+    const history = s.qaHistory.length
+      ? `\n\nHere is the conversation so far:\n${s.qaHistory.map((x, i) =>
+        `Q${i + 1}: ${x.question}\nA${i + 1}: ${x.answer}`).join('\n\n')}`
+      : ''
+    const harness = d.harnesses.find((h) => h.id === s.harnessId)
+    return s.promptBase + history + (harness?.promptNote?.('read') ?? '') + protocol({ questions: true })
+  }
 
-      const s: Breakdown & { kill?: (reason: string) => void; forceKill?: () => void } = { running: true, events: [], error: null }
-      state.set(epicId, s)
-      const record = (event: Breakdown['events'][number]) => {
-        s.events.push(event)
-        d.push({ type: 'breakdown', epicId, event })
-      }
-      let draft: DraftTask[] | null = null
-      let problem = 'it was not saved' // why there is no usable draft yet
-      record({ kind: 'info', text: `Started ${harness.name} session · ${model || 'default model'} · read-only · ${board.repo_path}` })
-      const fail = (e: unknown) => {
-        s.running = false
-        s.error = e instanceof Error ? e.message : String(e)
-        d.push({ type: 'changed' })
-      }
-      let session: ReturnType<typeof startSession>
-      try { session = startSession({
-        harness, bin, cwd: board.repo_path, model, permission: 'read', // read-only: safe in the main checkout
-        firstTurn: breakdownPrompt(epic.title, epic.description) + (harness.promptNote?.('read') ?? '') + protocol({ questions: false }),
+  /** Start one read-only turn and route its result back into the epic's session state. */
+  function launch(epicId: number, s: EpicSession, firstTurn: string, resume?: string) {
+    const harness = d.harnesses.find((h) => h.id === s.harnessId)
+    if (!harness) return fail(s, new Error(`Unknown harness "${s.harnessId}"`))
+    const bin = d.resolveBin(harness.id)
+    if (!bin) return fail(s, new Error(`${harness.name} CLI (${harness.bin}) not found. Check Settings.`))
+    const epic = d.db.getEpic(epicId)
+    if (!epic) return fail(s, new Error(`Epic ${epicId} not found`))
+    const { board } = d.db.getBoard(epic.board_id)
+    const settings = d.db.getSettings()
+    const record = (event: Breakdown['events'][number]) => {
+      s.events.push(event)
+      d.push({ type: 'breakdown', epicId, event })
+    }
+
+    let session: ReturnType<typeof startSession>
+    try {
+      session = startSession({
+        harness, bin, cwd: board.repo_path, model: s.model, permission: 'read', // read-only: safe in the main checkout
+        resume,
+        firstTurn,
         maxTurns: settings.maxTurns,
         idleTimeoutMin: settings.idleTimeoutMin,
         spawn: d.spawn,
         onEvent: record,
-        onSessionId: () => {},
+        onSessionId: (id) => { s.sessionId = id },
         onArtifact: (a) => {
+          if (s.mode === 'brainstorm') {
+            if (a.name === EPIC_ARTIFACT) s.epicArtifact = a.content
+            return
+          }
           if (a.name !== DRAFT_ARTIFACT) return
-          draft = parseDraft(a.content)
-          if (!draft) problem = draftProblem(a.content)
+          s.draft = parseDraft(a.content)
+          if (!s.draft) s.draftProblem = draftProblem(a.content)
         },
-        // Models sometimes write broken JSON (e.g. an unescaped quote): tell the agent, in the same session.
-        onDone: (summary) => (draft ??= parseDraft(summary))
-          ? null
-          : `The ${DRAFT_ARTIFACT} artifact can't be used: ${problem}. Save the complete corrected list again as ` +
-            `<artifact name="${DRAFT_ARTIFACT}">…</artifact>, then end with [DONE].`
-      }) } catch (e) { return fail(e) }
-      s.kill = session.kill
-      s.forceKill = session.forceKill
-      d.push({ type: 'changed' })
+        // Models sometimes write broken JSON or forget the artifact: tell the agent, in the same session.
+        onDone: (summary) => {
+          if (s.mode === 'brainstorm') {
+            return s.epicArtifact?.trim() || summary.trim()
+              ? null
+              : `The epic specification is still missing. Save the goals, scope, and acceptance criteria as ` +
+                `<artifact name="${EPIC_ARTIFACT}">…</artifact>, then end with [DONE].`
+          }
+          s.draft ??= parseDraft(summary)
+          return s.draft
+            ? null
+            : `The ${DRAFT_ARTIFACT} artifact can't be used: ${s.draftProblem}. Save the complete corrected list again as ` +
+              `<artifact name="${DRAFT_ARTIFACT}">…</artifact>, then end with [DONE].`
+        }
+      })
+    } catch (e) { return fail(s, e) }
+    s.kill = session.kill
+    s.forceKill = session.forceKill
+    changed()
 
-      session.result.then((m) => {
+    session.result.then((m: Marker) => {
+      if (m.type === 'question') {
+        // Keep the session (and its id) in memory: the user's answer resumes it.
+        s.question = m.text
+        s.error = null
         s.running = false
-        if (m.type !== 'done') s.error = m.type === 'question' ? `The agent asked: ${m.text}\nAdd the answer to the epic description and try again.` : m.text
-        else if (!(draft ??= parseDraft(m.text))) s.error = `The agent finished without a usable ${DRAFT_ARTIFACT}: ${problem}.`
-        else d.db.setEpicDraft(epicId, draft)
-        d.push({ type: 'changed' })
-      }).catch(fail)
+      } else if (m.type === 'done') {
+        s.question = null
+        s.running = false
+        if (s.mode === 'breakdown') {
+          s.draft ??= parseDraft(m.text)
+          if (!s.draft) s.error = `The agent finished without a usable ${DRAFT_ARTIFACT}: ${s.draftProblem}.`
+          else d.db.setEpicDraft(epicId, s.draft)
+        } else {
+          const description = (s.epicArtifact?.trim() ? s.epicArtifact : m.text).trim()
+          if (!description) s.error = `The agent finished without saving a usable ${EPIC_ARTIFACT} specification.`
+          else d.db.updateEpic(epicId, { description })
+        }
+      } else {
+        s.error = m.text
+        s.question = null
+        s.running = false
+      }
+      changed()
+    }).catch((e) => fail(s, e))
+  }
+
+  function start(epicId: number, harnessId: string, model: string, mode: Mode) {
+    if (state.get(epicId)?.running) throw new Error('A session is already running for this epic')
+    const epic = d.db.getEpic(epicId)
+    if (!epic) throw new Error(`Epic ${epicId} not found`)
+    if (mode === 'breakdown' && !epic.description.trim()) throw new Error('Write a description for the epic first')
+    const harness = d.harnesses.find((h) => h.id === harnessId)
+    if (!harness) throw new Error(`Unknown harness "${harnessId}"`)
+    if (!d.resolveBin(harness.id)) throw new Error(`${harness.name} CLI (${harness.bin}) not found. Check Settings.`)
+    const { board } = d.db.getBoard(epic.board_id)
+
+    const s: EpicSession = {
+      running: true, events: [], error: null, question: null, mode,
+      sessionId: null, harnessId: harness.id, model,
+      promptBase: mode === 'brainstorm' ? brainstormPrompt(epic.title, epic.description) : breakdownPrompt(epic.title, epic.description),
+      qaHistory: [], draft: null, draftProblem: 'it was not saved', epicArtifact: null
+    }
+    state.set(epicId, s)
+    recordStarted(epicId, s, harness, board.repo_path)
+    launch(epicId, s, s.promptBase + (harness.promptNote?.('read') ?? '') + protocol({ questions: true }))
+  }
+
+  function recordStarted(epicId: number, s: EpicSession, harness: Harness, repo: string) {
+    const event: Breakdown['events'][number] = {
+      kind: 'info',
+      text: `Started ${harness.name} ${s.mode === 'brainstorm' ? 'brainstorm' : 'breakdown'} session · ${s.model || 'default model'} · read-only · ${repo}`
+    }
+    s.events.push(event)
+    d.push({ type: 'breakdown', epicId, event })
+  }
+
+  return {
+    get(epicId: number): Breakdown {
+      const s = state.get(epicId)
+      return s
+        ? { running: s.running, events: s.events, error: s.error, question: s.question, mode: s.mode }
+        : { running: false, events: [], error: null, question: null }
+    },
+
+    start(epicId: number, harnessId: string, model: string) {
+      start(epicId, harnessId, model, 'breakdown')
+    },
+
+    /** An interactive session that interviews the user, then saves the epic spec as epic.md. */
+    startBrainstorm(epicId: number, harnessId: string, model: string) {
+      start(epicId, harnessId, model, 'brainstorm')
+    },
+
+    /** Send the user's answer to a session paused on [QUESTION], resuming the same harness session when possible. */
+    answer(epicId: number, text: string) {
+      const s = state.get(epicId)
+      if (!s) throw new Error('This epic has no session waiting for an answer')
+      if (s.running) throw new Error('A session is already running for this epic')
+      if (s.question === null) throw new Error('This epic is not waiting for an answer')
+      const answer = text.trim()
+      if (!answer) throw new Error('Write an answer first')
+      if (!d.harnesses.some((h) => h.id === s.harnessId)) throw new Error(`Unknown harness "${s.harnessId}"`)
+
+      s.qaHistory.push({ question: s.question, answer })
+      s.question = null
+      s.error = null
+      s.running = true
+      changed()
+      launch(epicId, s, answerTurn(s, answer), s.sessionId ?? undefined)
     },
 
     stop(epicId: number) {
       const s = state.get(epicId)
-      if (s?.running) s.kill?.('Stopped by user')
+      if (!s) return
+      if (s.running) s.kill?.('Stopped by user')
+      else if (s.question !== null) {
+        s.question = null
+        changed()
+      }
     },
 
     killAll({ force = false } = {}) {
