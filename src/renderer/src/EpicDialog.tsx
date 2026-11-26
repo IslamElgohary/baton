@@ -106,20 +106,20 @@ export function EpicDialog({ epic, harnesses, act, onClose }: Props) {
             {bd.running
               ? <button className="btn" onClick={() => act(call('stopBreakdown', epic.id))}>■ Stop</button>
               : <>
-                <button className="btn-primary" disabled={!description.trim()} onClick={breakDown}>✨ Break down</button>
-                <button className="btn" title="Interview me, then write the epic description" onClick={brainstorm}>💬 Brainstorm</button>
+                <button className="btn-primary" disabled={!description.trim() || !!bd.question} onClick={breakDown}>✨ Break down</button>
+                <button className="btn" disabled={!!bd.question} title="Interview me, then write the epic description" onClick={brainstorm}>💬 Brainstorm</button>
               </>}
           </div>
           <p className="mt-1 text-xs text-neutral-500">Runs a read-only agent session in the repository. Break down proposes tasks for you to review; brainstorm asks you questions and saves the epic description.</p>
           {bd.error && <div className="mt-2 rounded bg-red-50 p-2 text-sm whitespace-pre-wrap text-red-700 dark:bg-red-950 dark:text-red-300">{bd.error}</div>}
           {bd.question && (
             <div className="mt-2">
-              <AnswerBox question={bd.question} onSend={(text) => act(call('answerBreakdown', epic.id, text))}
+              <AnswerBox question={bd.question} onSend={(text) => act(call('answerBreakdown', epic.id, text).then(() => true))}
                 onDiscard={() => act(call('stopBreakdown', epic.id))} />
             </div>
           )}
           {(bd.running || bd.events.length > 0) && (
-            <details open={bd.running} className="mt-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
+            <details open={bd.running || !!bd.question} className="mt-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
               <summary className="cursor-pointer px-3 py-1.5 text-xs">Session {bd.running ? '● live' : ''}</summary>
               <Transcript events={bd.events} live={bd.running} />
             </details>

@@ -57,7 +57,7 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
         <button className="btn-primary" disabled={!dirty} onClick={() => act(call('updateTask', task.id, { title, description }))}>Save</button>
       </>}>
       <div className="flex flex-col gap-4">
-        {question && <AnswerBox question={question} onSend={(text) => act(call('answerQuestion', task.id, text))} />}
+        {question && <AnswerBox question={question} onSend={(text) => act(call('answerQuestion', task.id, text).then(() => true))} />}
         <label>
           <span className="label">Title</span>
           <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />

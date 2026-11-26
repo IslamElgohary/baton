@@ -107,6 +107,8 @@ interface EpicSession extends Breakdown {
   draftProblem: string
   /** Latest epic.md content saved by a brainstorm session. */
   epicArtifact: string | null
+  /** Set when we kill the session: its result is then ignored, even if the agent had already finished. */
+  stopped: string | null
 }
 
 /** "Break down" and brainstorm sessions: one read-only agent session per epic, in the board's repo. State in memory. */
@@ -170,7 +172,8 @@ export function createBreakdowns(d: BreakdownDeps) {
         // Models sometimes write broken JSON or forget the artifact: tell the agent, in the same session.
         onDone: (summary) => {
           if (s.mode === 'brainstorm') {
-            return s.epicArtifact?.trim() || summary.trim()
+            // Only epic.md counts: a closing remark ("All set!") must not replace the description.
+            return s.epicArtifact?.trim()
               ? null
               : `The epic specification is still missing. Save the goals, scope, and acceptance criteria as ` +
                 `<artifact name="${EPIC_ARTIFACT}">…</artifact>, then end with [DONE].`
@@ -183,11 +186,13 @@ export function createBreakdowns(d: BreakdownDeps) {
         }
       })
     } catch (e) { return fail(s, e) }
-    s.kill = session.kill
+    s.stopped = null
+    s.kill = (reason) => { s.stopped ??= reason; session.kill(reason) }
     s.forceKill = session.forceKill
     changed()
 
     session.result.then((m: Marker) => {
+      if (s.stopped) m = { type: 'failed', text: s.stopped }
       if (m.type === 'question') {
         // Keep the session (and its id) in memory: the user's answer resumes it.
         s.question = m.text
@@ -201,7 +206,7 @@ export function createBreakdowns(d: BreakdownDeps) {
           if (!s.draft) s.error = `The agent finished without a usable ${DRAFT_ARTIFACT}: ${s.draftProblem}.`
           else d.db.setEpicDraft(epicId, s.draft)
         } else {
-          const description = (s.epicArtifact?.trim() ? s.epicArtifact : m.text).trim()
+          const description = s.epicArtifact?.trim()
           if (!description) s.error = `The agent finished without saving a usable ${EPIC_ARTIFACT} specification.`
           else d.db.updateEpic(epicId, { description })
         }
@@ -216,6 +221,7 @@ export function createBreakdowns(d: BreakdownDeps) {
 
   function start(epicId: number, harnessId: string, model: string, mode: Mode) {
     if (state.get(epicId)?.running) throw new Error('A session is already running for this epic')
+    if (state.get(epicId)?.question) throw new Error('The agent is waiting for an answer: answer or discard its question first')
     const epic = d.db.getEpic(epicId)
     if (!epic) throw new Error(`Epic ${epicId} not found`)
     if (mode === 'breakdown' && !epic.description.trim()) throw new Error('Write a description for the epic first')
@@ -228,7 +234,7 @@ export function createBreakdowns(d: BreakdownDeps) {
       running: true, events: [], error: null, question: null, mode,
       sessionId: null, harnessId: harness.id, model,
       promptBase: mode === 'brainstorm' ? brainstormPrompt(epic.title, epic.description) : breakdownPrompt(epic.title, epic.description),
-      qaHistory: [], draft: null, draftProblem: 'it was not saved', epicArtifact: null
+      qaHistory: [], draft: null, draftProblem: 'it was not saved', epicArtifact: null, stopped: null
     }
     state.set(epicId, s)
     recordStarted(epicId, s, harness, board.repo_path)
@@ -269,7 +275,10 @@ export function createBreakdowns(d: BreakdownDeps) {
       if (s.question === null) throw new Error('This epic is not waiting for an answer')
       const answer = text.trim()
       if (!answer) throw new Error('Write an answer first')
-      if (!d.harnesses.some((h) => h.id === s.harnessId)) throw new Error(`Unknown harness "${s.harnessId}"`)
+      // Check before clearing the question, so a failure leaves it there to answer again.
+      const harness = d.harnesses.find((h) => h.id === s.harnessId)
+      if (!harness) throw new Error(`Unknown harness "${s.harnessId}"`)
+      if (!d.resolveBin(harness.id)) throw new Error(`${harness.name} CLI (${harness.bin}) not found. Check Settings.`)
 
       s.qaHistory.push({ question: s.question, answer })
       s.question = null

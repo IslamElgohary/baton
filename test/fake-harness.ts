@@ -30,6 +30,7 @@ process.stdin.on('data', (c) => {
     if (scenario === 'brainstorm') out({ t: 'end', v: resume
       ? 'Got it.\\n<artifact name="epic.md">\\n# Auth epic\\n\\nGoals: sign in with the providers.\\nScope: web only.\\nAcceptance: tests pass.\\n</artifact>\\n[DONE]'
       : 'I need a detail first.\\n[QUESTION] Which login providers?' })
+    if (scenario === 'chatty') out({ t: 'end', v: 'All set!\\n[DONE]' })
     if (scenario === 'continue') out({ t: 'end', v: turn < 2 ? 'Launched a subagent, waiting.' : 'Finished.\\n[DONE]' })
     if (scenario === 'never') out({ t: 'end', v: 'still going' })
     if (scenario === 'fail') out({ t: 'end', v: 'boom\\n[FAILED] cannot' })

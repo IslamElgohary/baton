@@ -115,6 +115,33 @@ test('stopping a brainstorm while it waits on a question clears the question', a
   expect(() => bd.answer(epic, 'GitHub')).toThrow(/not waiting/)
 })
 
+test('a brainstorm that ends without epic.md keeps the description', async () => {
+  const db = createDb(':memory:')
+  db.saveSettings({ maxConcurrency: 3, idleTimeoutMin: 1, maxTurns: 3, binPaths: {} })
+  const epic = db.createEpic(db.createBoard('b', process.cwd(), 'main', 'fake'), 'Auth', 'Original', '#000')
+  const bd = createBreakdowns({ db, harnesses: [fake], resolveBin: () => process.execPath, spawn, push: () => {} })
+  bd.startBrainstorm(epic, 'fake', 'chatty') // ends every turn with "All set!" and [DONE], never saving epic.md
+  await waitFor(() => !bd.get(epic).running)
+  expect(bd.get(epic).events.filter((e) => e.kind === 'user' && e.text.includes('still missing'))).toHaveLength(2) // asked again
+  expect(bd.get(epic).error).toMatch(/epic\.md/)
+  expect(db.getEpic(epic)?.description).toBe('Original')
+})
+
+test('a pending question blocks a new session, and a failed answer keeps it', async () => {
+  const db = createDb(':memory:')
+  db.saveSettings({ maxConcurrency: 3, idleTimeoutMin: 1, maxTurns: 3, binPaths: {} })
+  const epic = db.createEpic(db.createBoard('b', process.cwd(), 'main', 'fake'), 'Auth', 'd', '#000')
+  let bin: string | null = process.execPath
+  const bd = createBreakdowns({ db, harnesses: [fake], resolveBin: () => bin, spawn, push: () => {} })
+  bd.startBrainstorm(epic, 'fake', 'brainstorm')
+  await waitFor(() => bd.get(epic).question !== null)
+  expect(() => bd.start(epic, 'fake', 'draft')).toThrow(/waiting for an answer/)
+  expect(() => bd.startBrainstorm(epic, 'fake', 'brainstorm')).toThrow(/waiting for an answer/)
+  bin = null
+  expect(() => bd.answer(epic, 'GitHub')).toThrow(/not found/)
+  expect(bd.get(epic).question).toBe('Which login providers?')
+})
+
 test('brainstormPrompt asks for questions and the epic.md artifact', () => {
   const p = brainstormPrompt('Auth', '')
   expect(p).toMatch(/\[QUESTION\]/)
