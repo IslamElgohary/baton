@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Breakdown, DraftTask, Epic, HarnessInfo } from '../../shared/types'
 import { call, onPush, type Act } from './api'
+import { AnswerBox } from './AnswerBox'
 import { Modal } from './Modal'
 import { Transcript } from './Transcript'
 
@@ -17,9 +18,17 @@ export function EpicDialog({ epic, harnesses, act, onClose }: Props) {
   const [color, setColor] = useState(epic.color)
   const [harness, setHarness] = useState(harnesses[0]?.id ?? '')
   const [model, setModel] = useState('')
-  const [bd, setBd] = useState<Breakdown>({ running: false, events: [], error: null })
+  const [bd, setBd] = useState<Breakdown>({ running: false, events: [], error: null, question: null })
   const [draft, setDraft] = useState<DraftTask[] | null>(epic.draft)
   const dirty = title !== epic.title || description !== epic.description || color !== epic.color
+  const prevDescription = useRef(epic.description)
+
+  // A brainstorm rewrites the epic description in the main process. Show it, but keep unsaved manual edits made while idle.
+  useEffect(() => {
+    const prev = prevDescription.current
+    prevDescription.current = epic.description
+    if (epic.description !== prev) setDescription((cur) => (cur === prev ? epic.description : cur))
+  }, [epic.description])
 
   useEffect(() => {
     const load = () => act(call('getBreakdown', epic.id)).then((b) => b && setBd(b))
@@ -36,6 +45,10 @@ export function EpicDialog({ epic, harnesses, act, onClose }: Props) {
   async function breakDown() {
     if (dirty) await save() // the agent reads the saved description
     await act(call('startBreakdown', epic.id, harness, model))
+  }
+  async function brainstorm() {
+    if (dirty) await save() // the agent starts from the saved title and description
+    await act(call('startBrainstorm', epic.id, harness, model))
   }
   async function approve() {
     const ids = await act(call('approveDraft', epic.id, draft!))
@@ -92,12 +105,21 @@ export function EpicDialog({ epic, harnesses, act, onClose }: Props) {
             </label>
             {bd.running
               ? <button className="btn" onClick={() => act(call('stopBreakdown', epic.id))}>■ Stop</button>
-              : <button className="btn-primary" disabled={!description.trim()} onClick={breakDown}>✨ Break down</button>}
+              : <>
+                <button className="btn-primary" disabled={!description.trim() || !!bd.question} onClick={breakDown}>✨ Break down</button>
+                <button className="btn" disabled={!!bd.question} title="Interview me, then write the epic description" onClick={brainstorm}>💬 Brainstorm</button>
+              </>}
           </div>
-          <p className="mt-1 text-xs text-neutral-500">Runs a read-only agent session in the repository. You review the proposed tasks before anything is created.</p>
+          <p className="mt-1 text-xs text-neutral-500">Runs a read-only agent session in the repository. Break down proposes tasks for you to review; brainstorm asks you questions and saves the epic description.</p>
           {bd.error && <div className="mt-2 rounded bg-red-50 p-2 text-sm whitespace-pre-wrap text-red-700 dark:bg-red-950 dark:text-red-300">{bd.error}</div>}
+          {bd.question && (
+            <div className="mt-2">
+              <AnswerBox question={bd.question} onSend={(text) => act(call('answerBreakdown', epic.id, text).then(() => true))}
+                onDiscard={() => act(call('stopBreakdown', epic.id))} />
+            </div>
+          )}
           {(bd.running || bd.events.length > 0) && (
-            <details open={bd.running} className="mt-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
+            <details open={bd.running || !!bd.question} className="mt-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
               <summary className="cursor-pointer px-3 py-1.5 text-xs">Session {bd.running ? '● live' : ''}</summary>
               <Transcript events={bd.events} live={bd.running} />
             </details>

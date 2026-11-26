@@ -1,9 +1,14 @@
 import { spawn } from 'node:child_process'
 import { expect, test } from 'vitest'
 import type { PushEvent } from '../shared/types'
-import { compactDraft, createBreakdowns, parseDraft } from './breakdown'
+import { brainstormPrompt, compactDraft, createBreakdowns, parseDraft } from './breakdown'
 import { createDb } from './db'
 import { fake } from '../../test/fake-harness'
+
+const waitFor = async (done: () => boolean) => {
+  const end = Date.now() + 5000
+  while (!done() && Date.now() < end) await new Promise((r) => setTimeout(r, 20))
+}
 
 test('parseDraft: sanitizes titles and keeps only earlier blockers; accepts fenced JSON', () => {
   expect(parseDraft('[{"title":" A "},{"title":"B","description":"d","blockedBy":[0,1,3,"x"]},{"title":""},{"nope":1}]'))
@@ -68,6 +73,80 @@ test('a breakdown that ends without a draft reports an error', async () => {
   while (bd.get(epic).running && Date.now() < end) await new Promise((r) => setTimeout(r, 20))
   expect(bd.get(epic).error).toMatch(/cannot/)
   expect(db.getEpic(epic)?.draft).toBeNull()
+})
+
+test('a brainstorm session pauses on [QUESTION] and saves epic.md as the description after answer()', async () => {
+  const db = createDb(':memory:')
+  db.saveSettings({ maxConcurrency: 3, idleTimeoutMin: 1, maxTurns: 3, binPaths: {} })
+  const epic = db.createEpic(db.createBoard('b', process.cwd(), 'main', 'fake'), 'Auth', '', '#000')
+  const pushes: PushEvent[] = []
+  const bd = createBreakdowns({ db, harnesses: [fake], resolveBin: () => process.execPath, spawn, push: (e) => pushes.push(e) })
+
+  bd.startBrainstorm(epic, 'fake', 'brainstorm') // allowed with no description yet
+  expect(bd.get(epic)).toMatchObject({ running: true, mode: 'brainstorm', question: null })
+
+  await waitFor(() => bd.get(epic).question !== null || !bd.get(epic).running)
+  expect(bd.get(epic)).toMatchObject({ running: false, question: 'Which login providers?', error: null, mode: 'brainstorm' })
+  expect(pushes.some((e) => e.type === 'breakdown' && e.event.kind === 'question')).toBe(true)
+  expect(() => bd.answer(epic, '   ')).toThrow(/answer/)
+
+  bd.answer(epic, 'GitHub and Google')
+  expect(bd.get(epic)).toMatchObject({ running: true, question: null })
+
+  await waitFor(() => !bd.get(epic).running)
+  expect(bd.get(epic).error).toBeNull()
+  expect(db.getEpic(epic)?.description).toBe(
+    '# Auth epic\n\nGoals: sign in with the providers.\nScope: web only.\nAcceptance: tests pass.')
+  expect(bd.get(epic).events.filter((e) => e.kind === 'user').map((e) => e.kind === 'user' && e.text))
+    .toContain('GitHub and Google')
+  expect(bd.get(epic).events.some((e) => e.kind === 'artifact' && e.name === 'epic.md')).toBe(true)
+  expect(() => bd.answer(epic, 'late')).toThrow(/not waiting/)
+})
+
+test('stopping a brainstorm while it waits on a question clears the question', async () => {
+  const db = createDb(':memory:')
+  db.saveSettings({ maxConcurrency: 3, idleTimeoutMin: 1, maxTurns: 3, binPaths: {} })
+  const epic = db.createEpic(db.createBoard('b', process.cwd(), 'main', 'fake'), 'Auth', '', '#000')
+  const bd = createBreakdowns({ db, harnesses: [fake], resolveBin: () => process.execPath, spawn, push: () => {} })
+  bd.startBrainstorm(epic, 'fake', 'brainstorm')
+  await waitFor(() => bd.get(epic).question !== null)
+  bd.stop(epic)
+  expect(bd.get(epic).question).toBeNull()
+  expect(() => bd.answer(epic, 'GitHub')).toThrow(/not waiting/)
+})
+
+test('a brainstorm that ends without epic.md keeps the description', async () => {
+  const db = createDb(':memory:')
+  db.saveSettings({ maxConcurrency: 3, idleTimeoutMin: 1, maxTurns: 3, binPaths: {} })
+  const epic = db.createEpic(db.createBoard('b', process.cwd(), 'main', 'fake'), 'Auth', 'Original', '#000')
+  const bd = createBreakdowns({ db, harnesses: [fake], resolveBin: () => process.execPath, spawn, push: () => {} })
+  bd.startBrainstorm(epic, 'fake', 'chatty') // ends every turn with "All set!" and [DONE], never saving epic.md
+  await waitFor(() => !bd.get(epic).running)
+  expect(bd.get(epic).events.filter((e) => e.kind === 'user' && e.text.includes('still missing'))).toHaveLength(2) // asked again
+  expect(bd.get(epic).error).toMatch(/epic\.md/)
+  expect(db.getEpic(epic)?.description).toBe('Original')
+})
+
+test('a pending question blocks a new session, and a failed answer keeps it', async () => {
+  const db = createDb(':memory:')
+  db.saveSettings({ maxConcurrency: 3, idleTimeoutMin: 1, maxTurns: 3, binPaths: {} })
+  const epic = db.createEpic(db.createBoard('b', process.cwd(), 'main', 'fake'), 'Auth', 'd', '#000')
+  let bin: string | null = process.execPath
+  const bd = createBreakdowns({ db, harnesses: [fake], resolveBin: () => bin, spawn, push: () => {} })
+  bd.startBrainstorm(epic, 'fake', 'brainstorm')
+  await waitFor(() => bd.get(epic).question !== null)
+  expect(() => bd.start(epic, 'fake', 'draft')).toThrow(/waiting for an answer/)
+  expect(() => bd.startBrainstorm(epic, 'fake', 'brainstorm')).toThrow(/waiting for an answer/)
+  bin = null
+  expect(() => bd.answer(epic, 'GitHub')).toThrow(/not found/)
+  expect(bd.get(epic).question).toBe('Which login providers?')
+})
+
+test('brainstormPrompt asks for questions and the epic.md artifact', () => {
+  const p = brainstormPrompt('Auth', '')
+  expect(p).toMatch(/\[QUESTION\]/)
+  expect(p).toMatch(/epic\.md/)
+  expect(p).toMatch(/acceptance criteria/i)
 })
 
 test('compactDraft keeps dependencies on the same tasks when blank rows are dropped', () => {
