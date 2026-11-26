@@ -3,11 +3,11 @@ import type { ExecResult } from './harnesses/types'
 
 type Exec = (bin: string, args: string[], opts?: { env?: NodeJS.ProcessEnv }) => Promise<ExecResult>
 
-/** Untranslated git messages: some results are read from its output ("Already up to date", "CONFLICT"…). */
-const GIT_ENV = { ...process.env, LC_ALL: 'C' }
-
 export function createGit(exec: Exec) {
-  const git = (cwd: string, ...args: string[]) => exec('git', ['-C', cwd, ...args], { env: GIT_ENV })
+  // Untranslated git messages: some results are read from its output ("Already up to date", "CONFLICT"…).
+  // Built per call: the login-shell PATH is adopted after this module loads, and git, its credential
+  // helpers, LFS filters and hooks all need it.
+  const git = (cwd: string, ...args: string[]) => exec('git', ['-C', cwd, ...args], { env: { ...process.env, LC_ALL: 'C' } })
   /** For commands that create commits: fall back to an app identity only when the user has none configured. */
   const withIdentity = async (cwd: string, ...args: string[]) => {
     const r = await git(cwd, ...args)

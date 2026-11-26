@@ -78,6 +78,19 @@ test('defaultBranch prefers origin/HEAD over the checked-out branch; branches li
   expect((await git.branches(dir)).sort()).toEqual(['feature', 'main'])
 })
 
+test('git runs untranslated, with the PATH as it is at call time (the login-shell PATH is adopted after startup)', async () => {
+  const envs: NodeJS.ProcessEnv[] = []
+  const git = createGit(async (_bin, _args, opts) => { envs.push(opts!.env!); return { code: 0, stdout: '', stderr: '' } })
+  const path = process.env.PATH
+  try {
+    process.env.PATH = '/adopted/later'
+    await git.isDirty('/x')
+  } finally {
+    process.env.PATH = path
+  }
+  expect(envs[0]).toMatchObject({ PATH: '/adopted/later', LC_ALL: 'C' })
+})
+
 test('remoteHasBranch: false only when origin lacks the branch, not when origin is unreachable', async () => {
   const git = createGit(exec)
   const dir = repo()
