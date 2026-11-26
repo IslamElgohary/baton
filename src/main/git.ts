@@ -18,10 +18,6 @@ export function createGit(exec: Exec) {
       const r = await git(dir, 'rev-parse', '--show-toplevel')
       return r.code === 0 ? r.stdout.trim() : null
     },
-    async currentBranch(dir: string): Promise<string> {
-      const r = await git(dir, 'symbolic-ref', '--short', 'HEAD')
-      return r.code === 0 ? r.stdout.trim() : 'main'
-    },
     /** The remote's default branch (origin/HEAD) when it exists locally, else the checked-out one. */
     async defaultBranch(dir: string): Promise<string> {
       const r = await git(dir, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD')
@@ -79,8 +75,9 @@ export function createGit(exec: Exec) {
       }
     },
     hasRemote: async (repo: string, remote = 'origin') => (await git(repo, 'remote', 'get-url', remote)).code === 0,
+    /** False only when origin answered and lacks the branch (exit 2); a network/auth failure is left to the push. */
     remoteHasBranch: async (repo: string, branch: string) =>
-      (await git(repo, 'ls-remote', '--exit-code', '--heads', 'origin', branch)).code === 0,
+      (await git(repo, 'ls-remote', '--exit-code', '--heads', 'origin', branch)).code !== 2,
     mergeBase: async (repo: string, a: string, b: string) => (await git(repo, 'merge-base', a, b)).stdout.trim(),
     /** `git diff from to` (e.g. a merged task: from its recorded merge-base to its branch). */
     diffRange: async (repo: string, from: string, to: string) =>

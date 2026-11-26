@@ -77,3 +77,15 @@ test('defaultBranch prefers origin/HEAD over the checked-out branch; branches li
   expect(await git.defaultBranch(dir)).toBe('main')
   expect((await git.branches(dir)).sort()).toEqual(['feature', 'main'])
 })
+
+test('remoteHasBranch: false only when origin lacks the branch, not when origin is unreachable', async () => {
+  const git = createGit(exec)
+  const dir = repo()
+  const origin = `${dir}-origin.git`
+  execFileSync('git', ['init', '-q', '--bare', origin])
+  sh(dir, 'remote', 'add', 'origin', origin); sh(dir, 'push', '-q', 'origin', 'main')
+  expect(await git.remoteHasBranch(dir, 'main')).toBe(true)
+  expect(await git.remoteHasBranch(dir, 'gone')).toBe(false)
+  sh(dir, 'remote', 'set-url', 'origin', `${dir}-nowhere.git`)
+  expect(await git.remoteHasBranch(dir, 'gone')).toBe(true) // unknown: let the push report the real error
+})
