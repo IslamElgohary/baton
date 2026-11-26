@@ -67,7 +67,9 @@ const STEPS: Step[] = [
     addColumn('tasks', 'queued_at', 'INTEGER')
     addColumn('tasks', 'queued_resume', 'INTEGER NOT NULL DEFAULT 0')
     addColumn('tasks', 'queued_message', 'TEXT')
-  }
+  },
+  // 4: archived cards: hidden from their (done) column and out of its ordering, still resolving dependents
+  ({ addColumn }) => { addColumn('tasks', 'archived_at', 'TEXT') }
 ]
 
 /**
@@ -165,8 +167,9 @@ export function createDb(file: string) {
     ({ ...c, trigger: trigger_json ? JSON.parse(trigger_json as string) : null }) as Column
   const renumber = (table: 'columns' | 'tasks', ids: number[]) =>
     ids.forEach((id, i) => run(`UPDATE ${table} SET position = ? WHERE id = ?`, i, id))
+  /** The column's cards in order. Archived cards aren't in the ordering (the board hides them). */
   const taskIds = (columnId: number) =>
-    all<{ id: number }>('SELECT id FROM tasks WHERE column_id = ? ORDER BY position', columnId).map((r) => r.id)
+    all<{ id: number }>('SELECT id FROM tasks WHERE column_id = ? AND archived_at IS NULL ORDER BY position', columnId).map((r) => r.id)
   const columnIds = (boardId: number) =>
     all<{ id: number }>('SELECT id FROM columns WHERE board_id = ? ORDER BY position', boardId).map((r) => r.id)
   const mustTask = (id: number) => {
@@ -242,7 +245,7 @@ export function createDb(file: string) {
         run('UPDATE columns SET trigger_json = ? WHERE id = ?', patch.trigger ? JSON.stringify(patch.trigger) : null, id)
     },
     deleteColumn(id: number) {
-      if (taskIds(id).length) throw new Error('Move or delete the tasks in this column first')
+      if (get('SELECT 1 FROM tasks WHERE column_id = ?', id)) throw new Error('Move or delete the tasks in this column first (archived ones too)')
       tx(() => {
         const col = get<{ board_id: number }>('SELECT board_id FROM columns WHERE id = ?', id)
         run('DELETE FROM columns WHERE id = ?', id)
@@ -392,9 +395,21 @@ export function createDb(file: string) {
         if (t.column_id !== columnId) renumber('tasks', taskIds(t.column_id).filter((x) => x !== id))
         const ids = taskIds(columnId).filter((x) => x !== id)
         ids.splice(Math.max(0, Math.min(index, ids.length)), 0, id)
-        run('UPDATE tasks SET column_id = ? WHERE id = ?', columnId, id)
+        run('UPDATE tasks SET column_id = ?, archived_at = NULL WHERE id = ?', columnId, id) // moving restores an archived card
         renumber('tasks', ids)
         return t.column_id
+      })
+    },
+
+    /** Archive a done column's cards (not ones with a session queued, running or waiting). Returns how many. */
+    archiveDone(columnId: number): number {
+      return tx(() => {
+        const col = get<{ is_done: number }>('SELECT is_done FROM columns WHERE id = ?', columnId)
+        if (!col?.is_done) throw new Error('Only a done column can be archived')
+        const n = Number(run(`UPDATE tasks SET archived_at = datetime('now')
+          WHERE column_id = ? AND archived_at IS NULL AND status NOT IN ('queued', 'running', 'waiting')`, columnId).changes)
+        renumber('tasks', taskIds(columnId))
+        return n
       })
     },
 

@@ -61,6 +61,8 @@ export interface Task {
   pr_url: string | null
   /** Why the last finish attempt failed (cleared on success). */
   finish_error: string | null
+  /** Set when archived from a done column: hidden there, still resolves dependents. Moving the card clears it. */
+  archived_at: string | null
 }
 
 /** A task proposed by "Break down", before the user approves it. `blockedBy` = indexes into the draft. */

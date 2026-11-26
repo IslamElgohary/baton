@@ -19,3 +19,21 @@ test('moveLocal reorders exactly like the main process (no flicker when the refe
     expect(pos(local)).toEqual(pos(db.getBoard(board).tasks))
   }
 })
+
+test('moveLocal skips archived cards like the main process does', () => {
+  const db = createDb(':memory:')
+  const board = db.createBoard('b', '/r', 'main', 'h')
+  const cols = db.getBoard(board).columns
+  const done = cols.find((c) => c.is_done)!
+  for (const t of ['old1', 'old2']) db.createTask(board, done.id, t)
+  db.archiveDone(done.id)
+  for (const t of ['x', 'y', 'z']) db.createTask(board, cols[0].id, t)
+  const ids = db.getBoard(board).tasks.filter((t) => !t.archived_at).map((t) => t.id)
+  const pos = (tasks: { id: number; column_id: number; position: number; archived_at: string | null }[]) =>
+    tasks.map(({ id, column_id, position, archived_at }) => ({ id, column_id, position, archived: !!archived_at })).sort((p, q) => p.id - q.id)
+  for (const [i, index] of [[0, 0], [1, 0], [2, 1]] as const) {
+    const local = moveLocal(db.getBoard(board).tasks, ids[i], done.id, index)
+    db.moveTask(ids[i], done.id, index)
+    expect(pos(local)).toEqual(pos(db.getBoard(board).tasks))
+  }
+})

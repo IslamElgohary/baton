@@ -25,8 +25,11 @@ const collision: CollisionDetection = (args) => {
   return taskHits.length ? taskHits : hits.length ? hits : closestCenter(scoped)
 }
 
+/** A column's cards in order. Archived cards are hidden and not part of the ordering (same as the main process). */
 const tasksIn = (tasks: Task[], columnId: number) =>
-  tasks.filter((t) => t.column_id === columnId).sort((a, b) => a.position - b.position)
+  tasks.filter((t) => t.column_id === columnId && !t.archived_at).sort((a, b) => a.position - b.position)
+const archivedIn = (tasks: Task[], columnId: number) =>
+  tasks.filter((t) => t.column_id === columnId && t.archived_at).sort((a, b) => b.archived_at!.localeCompare(a.archived_at!) || b.id - a.id)
 
 /** Same reordering the main process does, applied locally so the drop doesn't flicker. */
 export function moveLocal(tasks: Task[], id: number, columnId: number, index: number): Task[] {
@@ -101,7 +104,7 @@ export function Board({ data, setData, harnesses, act, epicFilter }: Props) {
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
           <SortableContext items={columns.map((c) => `c${c.id}`)} strategy={horizontalListSortingStrategy}>
             {columns.map((c) => (
-              <ColumnView key={c.id} column={c} tasks={tasksIn(visible, c.id)} act={act} meta={meta} epicFilter={epicFilter}
+              <ColumnView key={c.id} column={c} tasks={tasksIn(visible, c.id)} archived={archivedIn(visible, c.id)} act={act} meta={meta} epicFilter={epicFilter}
                 onEdit={() => setEditColumn(c)} onOpenTask={setOpenTask} />
             ))}
           </SortableContext>
@@ -152,10 +155,11 @@ function BoardHeader({ data: { board }, act }: { data: BoardData; act: Act }) {
   )
 }
 
-function ColumnView({ column, tasks, act, meta, epicFilter, onEdit, onOpenTask }: {
-  column: Column; tasks: Task[]; act: Act; meta: Meta; epicFilter: number | null; onEdit: () => void; onOpenTask: (id: number) => void
+function ColumnView({ column, tasks, archived, act, meta, epicFilter, onEdit, onOpenTask }: {
+  column: Column; tasks: Task[]; archived: Task[]; act: Act; meta: Meta; epicFilter: number | null; onEdit: () => void; onOpenTask: (id: number) => void
 }) {
   const sortable = useSortable({ id: `c${column.id}` })
+  const [showArchived, setShowArchived] = useState(false)
   const body = useDroppable({ id: `b${column.id}` })
   const t = column.trigger
   return (
@@ -169,6 +173,10 @@ function ColumnView({ column, tasks, act, meta, epicFilter, onEdit, onOpenTask }
           {column.is_done ? <span className="text-xs text-green-600" title="Done column">✓</span> : null}
           {column.finish_on_enter ? <span className="text-xs text-purple-600" title="Finishes cards that enter (merge or PR)">⇡ finish</span> : null}
           <div className="flex-1" />
+          {column.is_done && tasks.length > 0 ? (
+            <button className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+              title="Hide this column's cards. They keep their history and can be restored." onClick={() => act(call('archiveDone', column.id))}>Archive all</button>
+          ) : null}
           <button className="text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100" title="Configure column" onClick={onEdit}>⚙</button>
         </div>
         {t && (
@@ -182,6 +190,17 @@ function ColumnView({ column, tasks, act, meta, epicFilter, onEdit, onOpenTask }
           {tasks.map((x) => <SortableCard key={x.id} task={x} meta={meta} onOpen={() => onOpenTask(x.id)} />)}
         </SortableContext>
         <AddTask onAdd={(title) => act(call('createTask', column.board_id, column.id, title, '', epicFilter))} />
+        {archived.length > 0 && (
+          <button className="mt-1 rounded-md px-2 py-1 text-left text-xs text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+            onClick={() => setShowArchived(!showArchived)}>{showArchived ? '▾' : '▸'} Archived ({archived.length})</button>
+        )}
+        {showArchived && archived.map((x) => (
+          <div key={x.id} className="relative opacity-60 hover:opacity-100" onClick={() => onOpenTask(x.id)}>
+            <CardView task={x} meta={meta} />
+            <button className="btn absolute right-1.5 bottom-1.5 px-1.5 py-0 text-xs" title="Put it back in this column"
+              onClick={(e) => { e.stopPropagation(); act(call('moveTask', x.id, column.id, tasks.length)) }}>Restore</button>
+          </div>
+        ))}
       </div>
     </section>
   )
