@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Board as BoardT, BoardData, HarnessInfo } from '../../shared/types'
+import type { BoardData, BoardSummary, HarnessInfo } from '../../shared/types'
 import { call, onPush } from './api'
 import { Board } from './Board'
 import { EpicDialog } from './EpicDialog'
@@ -12,7 +12,7 @@ const store = {
 }
 
 export function App() {
-  const [boards, setBoards] = useState<BoardT[]>([])
+  const [boards, setBoards] = useState<BoardSummary[]>([])
   const [boardId, setBoardId] = useState<number | null>(store.get())
   const [data, setData] = useState<BoardData | null>(null)
   const [view, setView] = useState<'board' | 'settings'>('board')
@@ -63,8 +63,14 @@ export function App() {
         {boards.map((b) => (
           <button key={b.id} title={b.repo_path}
             onClick={() => { setBoardId(b.id); setView('board') }}
-            className={`truncate rounded-md px-2 py-1 text-left text-sm ${b.id === boardId && view === 'board' ? 'bg-neutral-200 dark:bg-neutral-800' : 'hover:bg-neutral-100 dark:hover:bg-neutral-900'}`}>
-            {b.name}
+            className={`flex items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${b.id === boardId && view === 'board' ? 'bg-neutral-200 dark:bg-neutral-800' : 'hover:bg-neutral-100 dark:hover:bg-neutral-900'}`}>
+            <span className="flex-1 truncate">{b.name}</span>
+            {b.attention > 0 && (
+              <span title={b.questions ? `${b.questions} waiting for your answer` : 'Cards with news you haven\'t opened'}
+                className={`rounded-full px-1.5 text-[10px] leading-4 font-semibold text-white ${b.questions ? 'bg-amber-500' : 'bg-indigo-500'}`}>
+                {b.attention}
+              </span>
+            )}
           </button>
         ))}
         <button className="btn mt-1" onClick={newBoard}>+ New board</button>

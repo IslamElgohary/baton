@@ -232,3 +232,19 @@ test('archiveDone hides a done column\'s cards from its ordering; they still res
   db.moveTask(b, done.id, 1) // restore in place
   expect([get(b).archived_at, get(b).position]).toEqual([null, 1])
 })
+
+test('listBoards counts the cards wanting attention (not archived ones); archiving clears the mark', () => {
+  const db = createDb(':memory:')
+  const board = db.createBoard('b', '/r', 'main', 'h')
+  const cols = db.getBoard(board).columns
+  const done = cols.find((c) => c.is_done)!
+  const ask = db.createTask(board, cols[0].id, 'ask')
+  const fin = db.createTask(board, done.id, 'fin')
+  db.createTask(board, cols[0].id, 'quiet')
+  db.setTaskState(ask, { attention: 'question' })
+  db.setTaskState(fin, { attention: 'done' })
+  expect(db.listBoards()[0]).toMatchObject({ attention: 2, questions: 1 })
+  db.archiveDone(done.id)
+  expect(db.listBoards()[0]).toMatchObject({ attention: 1, questions: 1 })
+  expect(db.getTask(fin).attention).toBeNull()
+})

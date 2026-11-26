@@ -29,6 +29,8 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
   const runsRef = useRef(runs)
   runsRef.current = runs
 
+  useEffect(() => { if (task.attention) act(call('seenTask', task.id)) }, [task.id, task.attention, act]) // opened: it's been seen
+
   useEffect(() => {
     const load = () => {
       act(call('listRuns', task.id)).then((r) => r && setRuns(r))

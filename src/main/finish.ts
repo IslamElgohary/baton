@@ -156,12 +156,18 @@ export function createFinisher(d: FinisherDeps) {
       const p = withRepoLock(repo, () => run(taskId, auto))
         .then((done) => {
           d.db.setTaskState(taskId, { finish_error: null })
-          if (auto && done) d.notify?.('finished', `Finished: ${task.title}`, done)
+          if (auto && done) {
+            d.db.setTaskState(taskId, { attention: 'done' })
+            d.notify?.('finished', `Finished: ${task.title}`, done)
+          }
         })
         .catch((e) => {
           const msg = e instanceof Error ? e.message : String(e)
           d.db.setTaskState(taskId, { finish_error: msg })
-          if (auto) d.notify?.('finished', `Couldn't finish: ${task.title}`, msg)
+          if (auto) {
+            d.db.setTaskState(taskId, { attention: 'failed' })
+            d.notify?.('finished', `Couldn't finish: ${task.title}`, msg)
+          }
           throw new Error(msg)
         })
         .finally(() => { inflight.delete(taskId); changed() })

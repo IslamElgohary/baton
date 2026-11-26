@@ -52,6 +52,7 @@ export const ARGS: { [K in keyof Api]: Check[] } = {
   deleteTask: [id],
   moveTask: [id, id, index],
   archiveDone: [id],
+  seenTask: [id],
   retryTask: [id],
   answerQuestion: [id, str],
   listArtifacts: [id],

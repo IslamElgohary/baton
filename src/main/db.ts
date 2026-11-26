@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
-import type { Artifact, Board, BoardData, Column, DraftTask, Epic, FinishMode, Run, SessionEvent, Settings, Task, TaskStatus, Trigger } from '../shared/types'
+import type { Artifact, Attention, Board, BoardData, BoardSummary, Column, DraftTask, Epic, FinishMode, Run, SessionEvent, Settings, Task, TaskStatus, Trigger } from '../shared/types'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -69,7 +69,9 @@ const STEPS: Step[] = [
     addColumn('tasks', 'queued_message', 'TEXT')
   },
   // 4: archived cards: hidden from their (done) column and out of its ordering, still resolving dependents
-  ({ addColumn }) => { addColumn('tasks', 'archived_at', 'TEXT') }
+  ({ addColumn }) => { addColumn('tasks', 'archived_at', 'TEXT') },
+  // 5: cards with something the user hasn't seen yet (a question, a finished or failed step)
+  ({ addColumn }) => { addColumn('tasks', 'attention', 'TEXT') }
 ]
 
 /**
@@ -194,7 +196,10 @@ export function createDb(file: string) {
     },
 
     // boards
-    listBoards: () => all<Board>('SELECT * FROM boards ORDER BY id'),
+    listBoards: () => all<BoardSummary>(`SELECT b.*,
+      (SELECT count(*) FROM tasks t WHERE t.board_id = b.id AND t.attention IS NOT NULL AND t.archived_at IS NULL) AS attention,
+      (SELECT count(*) FROM tasks t WHERE t.board_id = b.id AND t.attention = 'question' AND t.archived_at IS NULL) AS questions
+      FROM boards b ORDER BY b.id`),
     getBoard(id: number): BoardData {
       const board = get<Board>('SELECT * FROM boards WHERE id = ?', id)
       if (!board) throw new Error(`Board ${id} not found`)
@@ -375,7 +380,7 @@ export function createDb(file: string) {
     setTaskState(id: number, patch: {
       branch?: string; worktree_path?: string | null
       merged_at?: string | null; merge_base?: string | null; pr_url?: string | null; finish_error?: string | null
-      auto_start?: number
+      auto_start?: number; attention?: Attention | null
     }) {
       for (const [k, v] of Object.entries(patch)) run(`UPDATE tasks SET ${k} = ? WHERE id = ?`, v, id)
     },
@@ -406,7 +411,7 @@ export function createDb(file: string) {
       return tx(() => {
         const col = get<{ is_done: number }>('SELECT is_done FROM columns WHERE id = ?', columnId)
         if (!col?.is_done) throw new Error('Only a done column can be archived')
-        const n = Number(run(`UPDATE tasks SET archived_at = datetime('now')
+        const n = Number(run(`UPDATE tasks SET archived_at = datetime('now'), attention = NULL
           WHERE column_id = ? AND archived_at IS NULL AND status NOT IN ('queued', 'running', 'waiting')`, columnId).changes)
         renumber('tasks', taskIds(columnId))
         return n
@@ -475,7 +480,7 @@ export function createDb(file: string) {
     /** `resume`: continue the column's last session; `message`: its first turn (the user's answer). */
     enqueue(taskId: number, resume: boolean, message: string | null = null) {
       mustTask(taskId) // every status may be queued (see NEXT_STATUS)
-      run(`UPDATE tasks SET status = 'queued', queued_at = (SELECT COALESCE(MAX(queued_at), 0) + 1 FROM tasks),
+      run(`UPDATE tasks SET status = 'queued', attention = NULL, queued_at = (SELECT COALESCE(MAX(queued_at), 0) + 1 FROM tasks),
            queued_resume = ?, queued_message = ? WHERE id = ?`, resume ? 1 : 0, message, taskId)
     },
     queued: () => all<{ id: number; queued_resume: number; queued_message: string | null }>(

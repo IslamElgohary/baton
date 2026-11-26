@@ -185,7 +185,7 @@ function ColumnView({ column, tasks, archived, act, meta, epicFilter, onEdit, on
           </div>
         )}
       </div>
-      <div ref={body.setNodeRef} className={`flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 ${body.isOver ? 'bg-indigo-50 dark:bg-indigo-950/40' : ''}`}>
+      <div ref={body.setNodeRef} className={`flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-2 ${body.isOver ? 'bg-indigo-50 dark:bg-indigo-950/40' : ''}`}>
         <SortableContext items={tasks.map((x) => `t${x.id}`)} strategy={verticalListSortingStrategy}>
           {tasks.map((x) => <SortableCard key={x.id} task={x} meta={meta} onOpen={() => onOpenTask(x.id)} />)}
         </SortableContext>
@@ -216,10 +216,19 @@ function SortableCard({ task, meta, onOpen }: { task: Task; meta: Meta; onOpen: 
   )
 }
 
+/** Ring and dot for a card with news the user hasn't opened yet. */
+const ATTENTION = {
+  question: { ring: 'ring-2 ring-amber-400', dot: 'bg-amber-500 animate-pulse', label: 'Waiting for your answer' },
+  failed: { ring: 'ring-2 ring-red-400', dot: 'bg-red-500', label: 'Failed: open it to see why' },
+  done: { ring: 'ring-2 ring-green-400', dot: 'bg-green-500', label: 'Finished: not opened yet' }
+}
+
 function CardView({ task, meta }: { task: Task; meta: Meta }) {
   const m = meta.get(task.id)
+  const a = task.attention ? ATTENTION[task.attention] : null
   return (
-    <div className="cursor-pointer rounded-md border border-neutral-200 bg-white p-2.5 shadow-sm hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-700">
+    <div className={`relative cursor-pointer rounded-md border border-neutral-200 bg-white p-2.5 shadow-sm hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-700 ${a?.ring ?? ''}`}>
+      {a && <span title={a.label} className={`absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full ${a.dot}`} />}
       <div className="flex items-start gap-2">
         <div className="flex-1 text-sm">{task.title}</div>
         <StatusBadge status={task.status} />

@@ -117,6 +117,10 @@ export function createApi(d: ApiDeps) {
       }
     },
     retryTask: (id: number) => d.runner.retry(id),
+    /** The user opened the card: clear its attention mark. */
+    seenTask(id: number) {
+      if (d.db.getTask(id).attention) d.db.setTaskState(id, { attention: null })
+    },
     archiveDone: (columnId: number) => d.db.archiveDone(columnId),
     answerQuestion(id: number, text: string) {
       if (!text.trim()) throw new Error('Answer is empty')
