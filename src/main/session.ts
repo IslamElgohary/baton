@@ -91,7 +91,7 @@ export interface SessionSpec {
 export function startSession(s: SessionSpec): { kill: (reason: string) => void; forceKill: () => void; result: Promise<Marker> } {
   const child = s.spawn(s.bin, s.harness.sessionArgs({ model: s.model, permission: s.permission, resume: s.resume }), {
     cwd: s.cwd,
-    env: process.env,
+    env: { ...process.env, ...s.harness.env },
     stdio: ['pipe', 'pipe', 'pipe'],
     detached: true // own process group, so kill(-pid) takes its children too
   })

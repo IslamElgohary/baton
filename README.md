@@ -10,7 +10,7 @@
 
 Baton is a desktop app for running local coding agents through a workflow you design. Each board points at a git repository. Each column can carry a **trigger**: when a card enters it, Baton starts an agent session (with the harness, model, permissions and prompt you configured for that column) in the card's own **git worktree**. When the agent finishes, the card moves on to the next column, so a typical card goes Plan → Build → Review → Done without you touching it. If the review finds something that must be fixed, the card goes back to Build with the findings.
 
-> **Status: early.** Runs on macOS. Linux support is **experimental**: it builds, passes the tests and starts in CI, but hasn't seen real-world use yet. Windows isn't supported yet. Supported agent harnesses: [pi](https://pi.dev) and the [Antigravity CLI](https://antigravity.google) (`agy`). Adapters for Claude Code, Codex and OpenCode are planned; see [Adding a harness](#adding-a-harness).
+> **Status: early.** Runs on macOS. Linux support is **experimental**: it builds, passes the tests and starts in CI, but hasn't seen real-world use yet. Windows isn't supported yet. Supported agent harnesses: [Claude Code](https://code.claude.com) (`claude`), [pi](https://pi.dev) and the [Antigravity CLI](https://antigravity.google) (`agy`). Adapters for Codex and OpenCode are planned; see [Adding a harness](#adding-a-harness).
 
 ## Features
 
@@ -62,7 +62,7 @@ You still need an agent harness installed and signed in (see below). Baton finds
 
 - macOS, or Linux with a desktop session (experimental)
 - Node.js 22.5 or newer, and git
-- At least one agent harness, signed in: [pi](https://pi.dev) (`pi`) or the [Antigravity CLI](https://antigravity.google) (`agy`)
+- At least one agent harness, signed in: [Claude Code](https://code.claude.com) (`claude`), [pi](https://pi.dev) (`pi`) or the [Antigravity CLI](https://antigravity.google) (`agy`)
 - For pull requests: the [GitHub CLI](https://cli.github.com) (`gh`), signed in
 
 ## Getting started
@@ -75,7 +75,7 @@ npm run dev
 ```
 
 1. Click **Choose a repository** and pick a local git repository. New boards start with Backlog → Plan → Build → Review → Done.
-2. Open **⚙ Settings** to check that Baton found your harness (`pi` or `agy`) and that it is signed in. New boards use the first one listed; change it per column.
+2. Open **⚙ Settings** to check that Baton found your harness (`claude`, `pi` or `agy`) and that it is signed in. New boards use the first one listed; change it per column.
 3. Add a card to **Backlog** and drag it into **Plan**. Click the card to watch the session.
 4. Click **⚙** on a column to change its harness, model, permissions, prompt, or where cards go on success or failure.
 
@@ -100,7 +100,7 @@ Baton appends a short protocol to every session's first message. The agent ends 
 ## Safety
 
 - **Full-auto columns run agents without permission prompts.** They can edit files and run any command. The worktree isolates git state, not your machine. Use full-auto only for repositories and prompts you trust.
-- **Read-only columns are enforced by the harness.** For pi, only the `read`, `grep`, `find` and `ls` tools are enabled, with no MCP tools and no project extensions. For Antigravity, every shell command, file write and MCP tool is denied, overriding your global allow-list. Anything other than an explicit full-auto setting falls back to read-only.
+- **Read-only columns are enforced by the harness.** For Claude Code, only the `Read`, `Grep` and `Glob` tools are loaded (no Bash, edits or subagents), with no MCP servers and no settings or hooks from the repository's `.claude/` folder. For pi, only the `read`, `grep`, `find` and `ls` tools are enabled, with no MCP tools and no project extensions. For Antigravity, every shell command, file write and MCP tool is denied, overriding your global allow-list. Anything other than an explicit full-auto setting falls back to read-only.
 - **Local merges** only run when your main checkout is clean and on the base branch, and are aborted on conflict.
 - **Quitting** stops all agent sessions. Anything still running after a short grace period is killed.
 
@@ -129,7 +129,7 @@ Bump `version` in `package.json` (through a PR), then push a matching tag: `git 
 ```bash
 npm test           # unit + integration tests (real git, fake agent harness)
 npm run typecheck
-npm run e2e        # real pi and Antigravity sessions in temp repos: needs `pi` and `agy`, costs model usage
+npm run e2e        # real Claude Code, pi and Antigravity sessions in temp repos: needs `claude`, `pi` and `agy`, costs model usage
 npm run smoke      # launch the built app and check it starts (run `npm run build` first; on Linux CI use xvfb-run;
                    # SMOKE_APP=<path to executable> checks a packaged app)
 npm run dist:mac   # package dist/Baton-<version>-{arm64,x64}.dmg

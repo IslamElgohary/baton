@@ -15,11 +15,11 @@ src/main/finish.ts                  createFinisher(deps): merge or PR, stacked P
 src/main/git.ts                     createGit(exec): worktrees, merges, diffs, pushes
 src/main/proc.ts                    exec without a shell, login-shell PATH, which
 src/main/security.ts                isAppUrl(): what counts as the app's own page
-src/main/harnesses/                 Harness interface, registry, and adapters (pi, Antigravity)
+src/main/harnesses/                 Harness interface, registry, and adapters (Claude Code, pi, Antigravity)
 src/preload/index.ts                window.api.invoke(channel, …args) / on(event)
 src/renderer/src/                   App, Board (dnd-kit), dialogs, AnswerBox, Transcript, Settings
 test/                               fake harness and captured CLI output used by the tests
-e2e/                                tests against the real agent CLIs (pi, Antigravity)
+e2e/                                tests against the real agent CLIs (Claude Code, pi, Antigravity)
 ```
 
 **Dependency injection.** Every main-process module is a factory that receives its dependencies (`createRunner({ db, harnesses, git, spawn, … })`). Only `index.ts` wires the real ones. Tests pass fakes: an in-memory database, a scriptable fake harness (`test/fake-harness.ts`, a small Node program driven over stdin) and real git in temporary repositories.
@@ -47,7 +47,7 @@ A harness is driven as a **long-lived session**. Baton spawns the CLI once, writ
 The first turn is the column's rendered prompt, plus the harness's permission note, plus a short **protocol**:
 
 - `[DONE]` or `[FAILED] <reason>` at the end of a reply ends the session.
-- `[QUESTION] <text>` pauses it. The process exits and the session stays open. The user's answer resumes the same harness session (`--conversation <id>` for Antigravity).
+- `[QUESTION] <text>` pauses it. The process exits and the session stays open. The user's answer resumes the same harness session (`--resume <id>` for Claude Code, `--conversation <id>` for Antigravity).
 - `<artifact name="…">…</artifact>` blocks are saved to the task.
 - If a turn ends without a marker (an early reply, background work, a blocked tool), Baton sends a "continue" turn, up to the max-turns setting.
 
@@ -97,6 +97,7 @@ The read-only permission must be **enforced by the harness**, not just requested
 
 | Harness | Session | Turn ends on | Read-only |
 |---|---|---|---|
+| Claude Code | `claude -p --input-format stream-json --output-format stream-json`; resume with `--resume <id>`; `--permission-prompts none` so nothing waits on a prompt; `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` so background subagents can't end a turn early | `result` | `--tools Read,Grep,Glob --strict-mcp-config --setting-sources user` (full-auto: `--permission-mode bypassPermissions`) |
 | pi | `pi --mode rpc`; `{"type":"prompt"}` per turn; resume with `--session <id>` | `agent_settled` | `--tools read,grep,find,ls --no-mcp --no-approve` |
 | Antigravity | `agy --print= --input-format stream-json`; resume with `--conversation <id>` | `result` | session settings denying `command(*)`, `write_file(*)`, `mcp(*)` |
 

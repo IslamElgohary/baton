@@ -38,6 +38,8 @@ export interface Harness {
   name: string
   /** Default executable name, looked up on PATH unless overridden in Settings. */
   bin: string
+  /** Extra environment variables for session processes. */
+  env?: Record<string, string>
   /** Args for the interactive sign-in, opened in a new terminal window. */
   loginArgs: string[]
   probe(run: RunBin): Promise<Probe>
