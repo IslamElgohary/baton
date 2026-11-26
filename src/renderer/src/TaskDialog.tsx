@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
-import type { Artifact, Board, Column, Epic, Run, Task } from '../../shared/types'
-import { call, onPush } from './api'
-import type { Act } from './App'
-import { StatusBadge } from './Board'
+import { useEffect, useRef, useState } from 'react'
+import type { Artifact, Board, Column, Epic, Run, SessionEvent, Task } from '../../shared/types'
+import { call, onPush, type Act } from './api'
+import { StatusBadge } from './StatusBadge'
 import { Modal } from './Modal'
 import { Transcript } from './Transcript'
 
@@ -28,6 +27,8 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
   const busy = task.status === 'queued' || task.status === 'running' || task.status === 'waiting'
   const question = task.status === 'waiting' ? runs.find((r) => r.question)?.question : null
   const dirty = title !== task.title || description !== task.description
+  const runsRef = useRef(runs)
+  runsRef.current = runs
 
   useEffect(() => {
     const load = () => {
@@ -35,15 +36,10 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
       act(call('listArtifacts', task.id)).then((a) => a && setArtifacts(a))
     }
     load()
+    // Runs are listed without transcripts, so reloading them is cheap; each SessionView loads and streams its own.
     return onPush((e) => {
       if (e.type === 'changed') load()
-      // Live transcript: append each streamed event to its session (reload if it's a new one).
-      if (e.type === 'session' && e.taskId === task.id) {
-        setRuns((rs) => {
-          if (!rs.some((r) => r.id === e.runId)) { load(); return rs }
-          return rs.map((r) => r.id === e.runId ? { ...r, events: [...r.events, e.event] } : r)
-        })
-      }
+      if (e.type === 'session' && e.taskId === task.id && !runsRef.current.some((r) => r.id === e.runId)) load() // a new session
     })
   }, [task.id, act])
 
@@ -88,7 +84,7 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
               {epics.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
             </select>
           </label>
-          <Blockers task={task} tasks={tasks} columns={columns} act={act} />
+          <Blockers task={task} tasks={tasks} act={act} />
         </div>
 
         <FinishPanel task={task} board={board} busy={busy} act={act} />
@@ -103,18 +99,30 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
         <div>
           <span className="label">Sessions</span>
           {runs.length === 0 && <p className="text-sm text-neutral-500">No sessions yet. Move the card into a ⚡ column to start one.</p>}
-          {runs.map((r, i) => <SessionView key={r.id} run={r} column={columns.find((c) => c.id === r.column_id)} open={i === 0} />)}
+          {runs.map((r, i) => <SessionView key={r.id} run={r} column={columns.find((c) => c.id === r.column_id)} open={i === 0} act={act} />)}
         </div>
       </div>
     </Modal>
   )
 }
 
-function SessionView({ run, column, open }: { run: Run; column?: Column; open: boolean }) {
+/** One session. Its transcript is fetched the first time it's expanded, then streamed events are appended. */
+function SessionView({ run, column, open, act }: { run: Run; column?: Column; open: boolean; act: Act }) {
   const live = run.ended_at === null
   const state = live ? '● live' : run.ok ? '✓ done' : '✕ failed'
+  const [shown, setShown] = useState(open)
+  const [events, setEvents] = useState<SessionEvent[] | null>(null)
+  // Pushes before the fetch returns are dropped: replies and pushes arrive in the order the main process sent
+  // them, so the fetched transcript already holds those events.
+  useEffect(() => onPush((e) => {
+    if (e.type === 'session' && e.runId === run.id) setEvents((ev) => ev && [...ev, e.event])
+  }), [run.id])
+  useEffect(() => { // fetch once, when first expanded
+    if (shown && !events) act(call('getRunEvents', run.id)).then((ev) => ev && setEvents(ev))
+  }, [shown, run.id])
   return (
-    <details open={open} className="mb-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
+    <details open={shown} onToggle={(e) => setShown(e.currentTarget.open)}
+      className="mb-2 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800">
       <summary className="cursor-pointer px-3 py-2 text-sm">
         <b>{column?.name ?? 'Deleted column'}</b> · {run.harness} · {run.model || 'default'} ·{' '}
         <span className={live ? 'text-blue-600' : run.ok ? 'text-green-600' : 'text-red-600'}>{state}</span>
@@ -125,7 +133,7 @@ function SessionView({ run, column, open }: { run: Run; column?: Column; open: b
           <span className="label">Result</span>{run.summary}
         </div>
       )}
-      <div className="border-t border-neutral-200 dark:border-neutral-800"><Transcript events={run.events} live={live} /></div>
+      <div className="border-t border-neutral-200 dark:border-neutral-800">{events ? <Transcript events={events} live={live} /> : <p className="p-3 text-xs text-neutral-500">Loading…</p>}</div>
     </details>
   )
 }
@@ -161,10 +169,9 @@ function ArtifactView({ artifact, column }: { artifact: Artifact; column?: Colum
   )
 }
 
-/** Blocked-by chips plus a picker; the task's trigger waits until every blocker is in a done column. */
-function Blockers({ task, tasks, columns, act }: { task: Task; tasks: Task[]; columns: Column[]; act: Act }) {
+/** Blocked-by chips plus a picker; the task's trigger waits until every blocker succeeded or is in a done column. */
+function Blockers({ task, tasks, act }: { task: Task; tasks: Task[]; act: Act }) {
   const set = (ids: number[]) => act(call('setBlockers', task.id, ids))
-  const isDone = (t: Task) => t.status === 'succeeded' || !!columns.find((c) => c.id === t.column_id)?.is_done // resolved
   const candidates = tasks.filter((t) => t.id !== task.id && !task.blocked_by.includes(t.id))
   return (
     <div className="flex-1">
@@ -174,8 +181,8 @@ function Blockers({ task, tasks, columns, act }: { task: Task; tasks: Task[]; co
           const b = tasks.find((t) => t.id === id)
           if (!b) return null
           return (
-            <span key={id} className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${isDone(b) ? 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300' : 'bg-neutral-200 dark:bg-neutral-800'}`}>
-              {isDone(b) ? '✓' : '🔒'} {b.title}
+            <span key={id} className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${b.resolved ? 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300' : 'bg-neutral-200 dark:bg-neutral-800'}`}>
+              {b.resolved ? '✓' : '🔒'} {b.title}
               <button className="ml-0.5 opacity-60 hover:opacity-100" onClick={() => set(task.blocked_by.filter((x) => x !== id))}>✕</button>
             </span>
           )

@@ -1,0 +1,9 @@
+{
+  // The renderer: DOM. Node types stay on because `call()` is typed from the main process's Api,
+  // which pulls the main modules (and their node imports) into this program.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src"]
+}

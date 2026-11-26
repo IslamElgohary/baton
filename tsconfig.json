@@ -1,4 +1,6 @@
 {
+  // Main process, preload, shared types, tests and tooling: Node, no DOM. The renderer has its own
+  // src/renderer/tsconfig.json (DOM), so neither side can use the other's globals by accident.
   "compilerOptions": {
     "target": "ES2023",
     "module": "ESNext",
@@ -8,19 +10,8 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "lib": [
-      "ES2023",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "types": [
-      "node"
-    ]
+    "lib": ["ES2023"],
+    "types": ["node"]
   },
-  "include": [
-    "src",
-    "test",
-    "e2e",
-    "electron.vite.config.ts"
-  ]
+  "include": ["src/main", "src/preload", "src/shared", "test", "e2e", "electron.vite.config.ts"]
 }

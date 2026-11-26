@@ -47,6 +47,10 @@ export interface Task {
   artifacts: number
   /** Ids of tasks that must be resolved before this task's trigger runs. */
   blocked_by: number[]
+  /** A blocker is still unresolved (computed). */
+  blocked: boolean
+  /** No longer holds up dependents: its latest session succeeded, or it sits in a done column (computed). */
+  resolved: boolean
   /** 1 = once unblocked, move to the next ⚡ column and start (cleared when that happens or you move the card). */
   auto_start: number
   /** Set once finished by a local merge. */
@@ -105,7 +109,7 @@ export type SessionEvent =
   | { kind: 'question'; text: string } // agent is waiting for the user's answer
   | { kind: 'artifact'; name: string } // agent saved an artifact
 
-/** A harness session for one task in one column. "Run again" continues the same session. */
+/** A harness session for one task in one column. "Run again" continues the same session. Its transcript: getRunEvents. */
 export interface Run {
   id: number
   task_id: number
@@ -119,7 +123,6 @@ export interface Run {
   summary: string | null
   /** Set while the session is paused waiting for the user's answer. */
   question: string | null
-  events: SessionEvent[]
 }
 
 export interface BoardData {

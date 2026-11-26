@@ -70,7 +70,6 @@ const STEPS: Step[] = [
   }
 ]
 
-/** Tasks with their artifact count and blockers. */
 /**
  * The task lifecycle: which status may follow which. Only the runner changes statuses (and recover(), after a
  * restart: running → failed). queued = waiting for a free slot (or for its blockers); waiting = paused on a question.
@@ -84,8 +83,15 @@ const NEXT_STATUS: Record<TaskStatus, TaskStatus[]> = {
   failed: ['queued']
 }
 
+/** SQL: task `x` no longer holds up its dependents — its latest session succeeded, or it sits in a done column. */
+const resolved = (x: string) => `(${x}.status = 'succeeded' OR (SELECT is_done FROM columns WHERE id = ${x}.column_id) = 1)`
+/** SQL: a blocker of task `t` that isn't resolved yet. The one definition of "blocked", for the runner and the UI. */
+const UNRESOLVED_BLOCKER = `SELECT 1 FROM task_deps d JOIN tasks b ON b.id = d.blocked_by_id WHERE d.task_id = t.id AND NOT ${resolved('b')}`
+
+/** Tasks with their artifact count, blockers, and blocked/resolved state. */
 const TASKS = `SELECT t.*, (SELECT count(*) FROM artifacts a WHERE a.task_id = t.id) AS artifacts,
-  (SELECT group_concat(blocked_by_id) FROM task_deps d WHERE d.task_id = t.id) AS blocked_by FROM tasks t`
+  (SELECT group_concat(blocked_by_id) FROM task_deps d WHERE d.task_id = t.id) AS blocked_by,
+  EXISTS (${UNRESOLVED_BLOCKER}) AS blocked, ${resolved('t')} AS resolved FROM tasks t`
 
 const DEFAULT_SETTINGS: Settings = { maxConcurrency: 3, idleTimeoutMin: 10, maxTurns: 8, binPaths: {} }
 
@@ -144,12 +150,11 @@ export function createDb(file: string) {
     db.exec('BEGIN')
     try { const r = fn(); db.exec('COMMIT'); return r } catch (e) { db.exec('ROLLBACK'); throw e }
   }
-  const toRun = ({ events: _blob, log: _log, prompt: _prompt, ...r }: Row): Run => ({
-    ...r,
-    events: (db.prepare('SELECT event FROM run_events WHERE run_id = ? ORDER BY id').all(r.id as number) as { event: string }[])
-      .map((e) => JSON.parse(e.event) as SessionEvent)
-  }) as Run
-  const toTask = (r: Row): Task => ({ ...r, blocked_by: r.blocked_by ? String(r.blocked_by).split(',').map(Number) : [] }) as Task
+  // Drops legacy columns (the old events blob, log, prompt).
+  const toRun = ({ events: _blob, log: _log, prompt: _prompt, ...r }: Row): Run => r as unknown as Run
+  const toTask = (r: Row): Task => ({
+    ...r, blocked_by: r.blocked_by ? String(r.blocked_by).split(',').map(Number) : [], blocked: !!r.blocked, resolved: !!r.resolved
+  }) as Task
   const toEpic = ({ draft_json, ...e }: Row): Epic => ({ ...e, draft: draft_json ? JSON.parse(draft_json as string) : null }) as Epic
   const blockersOf = (taskId: number) =>
     all<{ blocked_by_id: number }>('SELECT blocked_by_id FROM task_deps WHERE task_id = ?', taskId).map((r) => r.blocked_by_id)
@@ -253,6 +258,8 @@ export function createDb(file: string) {
     // tasks
     getTask: mustTask,
     createTask(boardId: number, columnId: number, title: string, description = ''): number {
+      if (get<{ board_id: number }>('SELECT board_id FROM columns WHERE id = ?', columnId)?.board_id !== boardId)
+        throw new Error('Column is not on this board')
       return Number(run('INSERT INTO tasks (board_id, column_id, position, title, description) VALUES (?, ?, ?, ?, ?)',
         boardId, columnId, taskIds(columnId).length, title, description).lastInsertRowid)
     },
@@ -289,10 +296,8 @@ export function createDb(file: string) {
         run('UPDATE tasks SET auto_start = ? WHERE id = ?', unique.length ? 1 : 0, taskId) // a blocked task starts when unblocked
       })
     },
-    /** True while any blocker is unresolved. Resolved = its latest session succeeded, or it sits in a done column. */
-    isBlocked: (taskId: number) => !!get(
-      `SELECT 1 FROM task_deps d JOIN tasks b ON b.id = d.blocked_by_id JOIN columns c ON c.id = b.column_id
-       WHERE d.task_id = ? AND c.is_done = 0 AND b.status != 'succeeded' LIMIT 1`, taskId),
+    /** True while any blocker is unresolved. */
+    isBlocked: (taskId: number) => !!get(`SELECT 1 FROM tasks t WHERE t.id = ? AND EXISTS (${UNRESOLVED_BLOCKER})`, taskId),
     /**
      * Auto-start tasks ready to go: no unresolved blocker, parked in a column without a trigger (not a done
      * column), and not already queued/running/waiting.
@@ -300,8 +305,7 @@ export function createDb(file: string) {
     readyToAdvance: () => all<{ id: number }>(
       `SELECT t.id FROM tasks t JOIN columns c ON c.id = t.column_id
        WHERE t.auto_start = 1 AND c.trigger_json IS NULL AND c.is_done = 0 AND t.status NOT IN ('queued', 'running', 'waiting')
-         AND NOT EXISTS (SELECT 1 FROM task_deps d JOIN tasks b ON b.id = d.blocked_by_id JOIN columns bc ON bc.id = b.column_id
-                         WHERE d.task_id = t.id AND bc.is_done = 0 AND b.status != 'succeeded')
+         AND NOT EXISTS (${UNRESOLVED_BLOCKER})
        ORDER BY t.id`).map((r) => r.id),
     /** First column to the right of `position` that has a trigger. */
     nextTriggerColumn(boardId: number, position: number): Column | undefined {
@@ -333,6 +337,8 @@ export function createDb(file: string) {
       void run('UPDATE epics SET draft_json = ? WHERE id = ?', draft ? JSON.stringify(draft) : null, id),
     /** Approve a breakdown: create its tasks (first column, in order) with their dependencies. Returns the new ids. */
     createTasksFromDraft(epicId: number, draft: DraftTask[]): number[] {
+      /** Draft index `b` is a valid blocker of task `i`: an earlier task in the draft. */
+      const earlier = (b: number, i: number) => Number.isInteger(b) && b >= 0 && b < i
       return tx(() => {
         const epic = get<{ board_id: number }>('SELECT board_id FROM epics WHERE id = ?', epicId)
         if (!epic) throw new Error(`Epic ${epicId} not found`)
@@ -341,17 +347,17 @@ export function createDb(file: string) {
         const ids = draft.map((t, i) => Number(run(
           'INSERT INTO tasks (board_id, epic_id, column_id, position, title, description, auto_start) VALUES (?, ?, ?, ?, ?, ?, ?)',
           epic.board_id, epicId, first, taskIds(first).length, t.title, t.description,
-          t.blockedBy.some((b) => b >= 0 && b < i) ? 1 : 0).lastInsertRowid))
+          t.blockedBy.some((b) => earlier(b, i)) ? 1 : 0).lastInsertRowid))
         draft.forEach((t, i) => {
           for (const b of new Set(t.blockedBy)) {
-            if (Number.isInteger(b) && b >= 0 && b < i) run('INSERT INTO task_deps (task_id, blocked_by_id) VALUES (?, ?)', ids[i], ids[b])
+            if (earlier(b, i)) run('INSERT INTO task_deps (task_id, blocked_by_id) VALUES (?, ?)', ids[i], ids[b])
           }
         })
         run('UPDATE epics SET draft_json = NULL WHERE id = ?', epicId)
         return ids
       })
     },
-    /** Internal fields, written by the runner and the finisher. */
+    // Internal fields, written by the runner and the finisher.
     /** Change a task's status; throws on a change the lifecycle doesn't allow (a bug). */
     setStatus(id: number, to: TaskStatus) {
       const from = mustTask(id).status
@@ -397,6 +403,9 @@ export function createDb(file: string) {
     reopenRun: (id: number) => void run('UPDATE runs SET ended_at = NULL, ok = NULL, summary = NULL WHERE id = ?', id),
     setRunSession: (id: number, sessionId: string) => void run('UPDATE runs SET session_id = ? WHERE id = ?', sessionId, id),
     appendEvent: (id: number, e: SessionEvent) => void run('INSERT INTO run_events (run_id, event) VALUES (?, ?)', id, JSON.stringify(e)),
+    /** A session's transcript (kept off Run: listing runs must stay cheap however long the transcripts get). */
+    runEvents: (id: number): SessionEvent[] =>
+      all<{ event: string }>('SELECT event FROM run_events WHERE run_id = ? ORDER BY id', id).map((e) => JSON.parse(e.event) as SessionEvent),
     finishRun(id: number, ok: boolean, summary: string) {
       run("UPDATE runs SET ended_at = datetime('now'), ok = ?, summary = ? WHERE id = ?", ok ? 1 : 0, summary, id)
     },

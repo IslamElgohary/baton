@@ -72,7 +72,8 @@ export function createApi(d: ApiDeps) {
     },
     /** Removes the board's worktree folders too (leftover work is committed; branches stay in the repo). */
     async deleteBoard(id: number) {
-      const tasks = d.db.getBoard(id).tasks
+      const { tasks, epics } = d.db.getBoard(id)
+      epics.forEach((e) => d.breakdowns.stop(e.id))
       tasks.forEach((t) => d.runner.forget(t.id))
       await Promise.all(tasks.map((t) => d.finisher.cleanup(t.id, { waitForStop: true }).catch(() => {})))
       d.db.deleteBoard(id)
@@ -123,6 +124,7 @@ export function createApi(d: ApiDeps) {
     listArtifacts: (taskId: number) => d.db.listArtifacts(taskId),
     stopTask: (id: number) => d.runner.stop(id),
     listRuns: (taskId: number) => d.db.listRuns(taskId),
+    getRunEvents: (runId: number) => d.db.runEvents(runId),
     finishTask: (id: number) => d.finisher.finish(id),
     removeWorktree: (id: number) => d.finisher.cleanup(id),
     /** The task's changes vs the base branch (from its worktree, or its branch once the worktree is gone). */

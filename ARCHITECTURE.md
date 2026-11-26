@@ -19,7 +19,7 @@ src/main/harnesses/                 Harness interface, registry, and adapters (p
 src/preload/index.ts                window.api.invoke(channel, …args) / on(event)
 src/renderer/src/                   App, Board (dnd-kit), dialogs, Transcript, Settings
 test/                               fake harness and captured CLI output used by the tests
-e2e/                                tests against the real Antigravity CLI
+e2e/                                tests against the real agent CLIs (pi, Antigravity)
 ```
 
 **Dependency injection.** Every main-process module is a factory that receives its dependencies (`createRunner({ db, harnesses, git, spawn, … })`). Only `index.ts` wires the real ones. Tests pass fakes: an in-memory database, a scriptable fake harness (`test/fake-harness.ts`, a small Node program driven over stdin) and real git in temporary repositories.

@@ -1,10 +1,13 @@
 import { existsSync } from 'node:fs'
 import type { ExecResult } from './harnesses/types'
 
-type Exec = (bin: string, args: string[]) => Promise<ExecResult>
+type Exec = (bin: string, args: string[], opts?: { env?: NodeJS.ProcessEnv }) => Promise<ExecResult>
 
 export function createGit(exec: Exec) {
-  const git = (cwd: string, ...args: string[]) => exec('git', ['-C', cwd, ...args])
+  // Untranslated git messages: some results are read from its output ("Already up to date", "CONFLICT"…).
+  // Built per call: the login-shell PATH is adopted after this module loads, and git, its credential
+  // helpers, LFS filters and hooks all need it.
+  const git = (cwd: string, ...args: string[]) => exec('git', ['-C', cwd, ...args], { env: { ...process.env, LC_ALL: 'C' } })
   /** For commands that create commits: fall back to an app identity only when the user has none configured. */
   const withIdentity = async (cwd: string, ...args: string[]) => {
     const r = await git(cwd, ...args)
@@ -77,7 +80,8 @@ export function createGit(exec: Exec) {
     hasRemote: async (repo: string, remote = 'origin') => (await git(repo, 'remote', 'get-url', remote)).code === 0,
     /** False only when origin answered and lacks the branch (exit 2); a network/auth failure is left to the push. */
     remoteHasBranch: async (repo: string, branch: string) =>
-      (await git(repo, 'ls-remote', '--exit-code', '--heads', 'origin', branch)).code !== 2,
+      // Full ref: a bare name is tail-matched, so `main` would also match refs/heads/team/main.
+      (await git(repo, 'ls-remote', '--exit-code', '--heads', 'origin', `refs/heads/${branch}`)).code !== 2,
     mergeBase: async (repo: string, a: string, b: string) => (await git(repo, 'merge-base', a, b)).stdout.trim(),
     /** `git diff from to` (e.g. a merged task: from its recorded merge-base to its branch). */
     diffRange: async (repo: string, from: string, to: string) =>

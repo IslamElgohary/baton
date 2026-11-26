@@ -35,6 +35,29 @@ test('updateBaseBranch refuses names that are not real branches', async () => {
   expect(db.getBoard(boardId).board.base_branch).toBe('main')
 })
 
+test('createTask refuses a column from another board', () => {
+  const { api, db, col } = setup()
+  const other = db.createBoard('o', '/other', 'main', 'fake')
+  expect(() => api.createTask(other, col.id, 't')).toThrow(/not on this board/)
+  expect(db.getBoard(other).tasks).toEqual([])
+})
+
+test('deleteBoard stops the breakdown sessions of its epics', async () => {
+  const { db, boardId } = setup()
+  const epic = db.createEpic(boardId, 'e', 'd', '#000000')
+  const stopped: number[] = []
+  const api = createApi({
+    db, harnesses: [fake],
+    runner: { forget: () => {} } as never,
+    breakdowns: { stop: (id: number) => stopped.push(id) } as never,
+    finisher: { cleanup: async () => {} } as never,
+    git: {} as never, exec: async () => ({ code: 0, stdout: '', stderr: '' }), resolveBin: () => null,
+    pickDirectory: async () => null, openPath: async () => {}, openExternal: async () => {}, openTerminal: async () => {}
+  })
+  await api.deleteBoard(boardId)
+  expect(stopped).toEqual([epic])
+})
+
 test('saveSettings rejects out-of-range or malformed values and drops unknown keys', () => {
   const { api, db } = setup()
   const ok = { maxConcurrency: 2, idleTimeoutMin: 5, maxTurns: 4, binPaths: { fake: '/bin/x' } }

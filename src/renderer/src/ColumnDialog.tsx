@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { Column, HarnessInfo, Trigger } from '../../shared/types'
-import { call } from './api'
-import type { Act } from './App'
+import { call, type Act } from './api'
 import { Modal } from './Modal'
 
 const VARS = ['task.title', 'task.description', 'epic.title', 'epic.description', 'prev.summary', 'artifacts', 'artifact.<name>', 'diff', 'branch', 'base', 'worktree', 'column.name', 'board.name']

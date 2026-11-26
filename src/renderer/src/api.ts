@@ -16,3 +16,6 @@ export function call<K extends keyof Api>(name: K, ...args: Parameters<Api[K]>):
 }
 
 export const onPush = (cb: (e: PushEvent) => void) => window.api.on(cb)
+
+/** Runs an IPC call and shows a failure in the error bar (resolves undefined then). */
+export type Act = <T>(p: Promise<T>) => Promise<T | undefined>

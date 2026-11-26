@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { HarnessInfo, Settings as SettingsT } from '../../shared/types'
-import { call } from './api'
-import type { Act } from './App'
+import { call, type Act } from './api'
 
 interface Props {
   harnesses: HarnessInfo[]

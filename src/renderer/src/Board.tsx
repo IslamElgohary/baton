@@ -6,9 +6,9 @@ import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable,
 import { CSS } from '@dnd-kit/utilities'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { BoardData, Column, Epic, HarnessInfo, Task } from '../../shared/types'
-import { call } from './api'
-import type { Act } from './App'
+import { call, type Act } from './api'
 import { ColumnDialog } from './ColumnDialog'
+import { StatusBadge } from './StatusBadge'
 import { TaskDialog } from './TaskDialog'
 
 // dnd ids: c<id> = column (sortable), b<id> = column body (drop target), t<id> = task
@@ -29,7 +29,7 @@ const tasksIn = (tasks: Task[], columnId: number) =>
   tasks.filter((t) => t.column_id === columnId).sort((a, b) => a.position - b.position)
 
 /** Same reordering the main process does, applied locally so the drop doesn't flicker. */
-function moveLocal(tasks: Task[], id: number, columnId: number, index: number): Task[] {
+export function moveLocal(tasks: Task[], id: number, columnId: number, index: number): Task[] {
   const moved = tasks.find((t) => t.id === id)!
   const target = tasksIn(tasks, columnId).filter((t) => t.id !== id)
   target.splice(index, 0, { ...moved, column_id: columnId })
@@ -48,17 +48,12 @@ interface Props {
   epicFilter: number | null
 }
 
-/** Per-card extras: its epic, and whether a blocker is still outside a done column. */
-type Meta = Map<number, { epic?: Epic; blocked: boolean }>
+/** Per-card extras: its epic. */
+type Meta = Map<number, { epic?: Epic }>
 
 export function Board({ data, setData, harnesses, act, epicFilter }: Props) {
   const { board, columns, tasks } = data
-  const done = new Set(columns.filter((c) => c.is_done).map((c) => c.id))
-  const meta: Meta = new Map(tasks.map((t) => [t.id, {
-    epic: data.epics.find((e) => e.id === t.epic_id),
-    // a blocker is resolved once its latest session succeeded or it sits in a done column
-    blocked: t.blocked_by.some((id) => { const b = tasks.find((x) => x.id === id); return !!b && !done.has(b.column_id) && b.status !== 'succeeded' })
-  }]))
+  const meta: Meta = new Map(tasks.map((t) => [t.id, { epic: data.epics.find((e) => e.id === t.epic_id) }]))
   const visible = epicFilter ? tasks.filter((t) => t.epic_id === epicFilter) : tasks
   const [dragging, setDragging] = useState<string | null>(null)
   const [editColumn, setEditColumn] = useState<Column | null>(null)
@@ -151,7 +146,7 @@ function BoardHeader({ data: { board }, act }: { data: BoardData; act: Act }) {
         </select>
       </label>
       <button className="btn-danger shrink-0 whitespace-nowrap" onClick={() => {
-        if (confirm(`Delete board "${board.name}" and all its tasks? Worktrees on disk are kept.`)) act(call('deleteBoard', board.id))
+        if (confirm(`Delete board "${board.name}" and all its tasks? Their worktree folders are removed (leftover work is committed to each branch first; branches stay).`)) act(call('deleteBoard', board.id))
       }}>Delete board</button>
     </header>
   )
@@ -202,20 +197,6 @@ function SortableCard({ task, meta, onOpen }: { task: Task; meta: Meta; onOpen: 
   )
 }
 
-const STATUS: Record<Task['status'], [string, string] | null> = {
-  idle: null,
-  queued: ['queued', 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'],
-  running: ['running', 'bg-blue-100 text-blue-800 animate-pulse dark:bg-blue-950 dark:text-blue-300'],
-  waiting: ['❓ needs answer', 'bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-100'],
-  succeeded: ['✓ done', 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300'],
-  failed: ['failed', 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300']
-}
-
-export function StatusBadge({ status }: { status: Task['status'] }) {
-  const s = STATUS[status]
-  return s ? <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${s[1]}`}>{s[0]}</span> : null
-}
-
 function CardView({ task, meta }: { task: Task; meta: Meta }) {
   const m = meta.get(task.id)
   return (
@@ -234,7 +215,7 @@ function CardView({ task, meta }: { task: Task; meta: Meta }) {
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.epic.color }} />{m.epic.title}
           </span>
         )}
-        {m?.blocked && <span title={task.auto_start ? 'Moves to the next ⚡ column and starts once every blocker has succeeded or is done' : 'Waiting for blockers'}>🔒 blocked{task.auto_start ? ' · auto-start' : ''}</span>}
+        {task.blocked && <span title={task.auto_start ? 'Moves to the next ⚡ column and starts once every blocker has succeeded or is done' : 'Waiting for blockers'}>🔒 blocked{task.auto_start ? ' · auto-start' : ''}</span>}
         {task.artifacts > 0 && <span>📎 {task.artifacts}</span>}
       </div>
     </div>
