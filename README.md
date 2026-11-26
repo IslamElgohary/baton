@@ -8,7 +8,7 @@
 
 ---
 
-Baton is a desktop app for running local coding agents through a workflow you design. Each board points at a git repository. Each column can carry a **trigger**: when a card enters it, Baton starts an agent session (with the harness, model, permissions and prompt you configured for that column) in the card's own **git worktree**. When the agent finishes, the card moves on to the next column, so a typical card goes Plan → Build → Review → Done without you touching it.
+Baton is a desktop app for running local coding agents through a workflow you design. Each board points at a git repository. Each column can carry a **trigger**: when a card enters it, Baton starts an agent session (with the harness, model, permissions and prompt you configured for that column) in the card's own **git worktree**. When the agent finishes, the card moves on to the next column, so a typical card goes Plan → Build → Review → Done without you touching it. If the review finds something that must be fixed, the card goes back to Build with the findings.
 
 > **Status: early.** Runs on macOS. Linux support is **experimental**: it builds, passes the tests and starts in CI, but hasn't seen real-world use yet. Windows isn't supported yet. Supported agent harnesses: [pi](https://pi.dev) and the [Antigravity CLI](https://antigravity.google) (`agy`). Adapters for Claude Code, Codex and OpenCode are planned; see [Adding a harness](#adding-a-harness).
 
@@ -16,10 +16,10 @@ Baton is a desktop app for running local coding agents through a workflow you de
 
 - **Configurable columns.** Add, rename, reorder and delete columns. Any column can run an agent when a card enters it, read-only or full-auto, and send the card onward on success or failure.
 - **Live agent sessions.** One session per card per column, with the full transcript streamed live: prompts, agent text, and every tool call with its input and output. If the agent stops early, Baton tells it to continue in the same session.
-- **Questions and artifacts.** Agents can pause and ask you something; the card shows *needs answer* and a desktop notification appears, and your reply continues the same session. Agents can also save documents (plans, reports) that later columns use as prompt variables.
-- **Epics.** Describe a larger piece of work, let an agent break it down into tasks with dependencies, then edit the draft before creating the cards.
+- **Questions, artifacts and notifications.** Agents can pause and ask you something; your reply continues the same session. Agents can also save documents (plans, review findings) that later columns use as prompt variables. Desktop notifications and unread rings/counts mark cards and boards when an agent asks a question, finishes, or fails.
+- **Epics and brainstorming.** Describe a larger piece of work—or click **💬 Brainstorm** to let a read-only agent explore the repo, ask clarifying questions, and write the scope and acceptance criteria—then break it down into tasks with dependencies and edit the draft before creating the cards.
 - **Dependencies.** A blocked card waits, then moves to the next ⚡ column and starts once all its blockers have succeeded. Its worktree merges in the blockers' branches first.
-- **Finishing.** Per board, a finished card either merges into the base branch locally or opens a pull request. Tasks inside an epic get stacked PRs.
+- **Finishing and archiving.** Per board, a finished card either merges into the base branch locally or opens a pull request (tasks inside an epic get stacked PRs). Archive completed cards in **Done** in one click while keeping their history and resolved dependencies.
 - **Isolation.** Every card works on its own branch in its own worktree, so several agents can run in parallel (the limit is configurable).
 
 ## Screenshots

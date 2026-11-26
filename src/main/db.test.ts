@@ -19,8 +19,8 @@ test('new board gets the default columns', () => {
   expect(cols.map((c) => c.name)).toEqual(['Backlog', 'Plan', 'Build', 'Review', 'Done'])
   expect(cols.map((c) => c.is_done)).toEqual([0, 0, 0, 0, 1])
   expect(cols[1].trigger).toMatchObject({ harness: 'antigravity', permission: 'read' })
-  // pipeline is chained on success: Plan → Build → Review → Done
-  expect(cols.slice(1, 4).map((c) => [c.trigger?.onSuccess, c.trigger?.onFailure])).toEqual([[cols[2].id, null], [cols[3].id, null], [cols[4].id, null]])
+  // pipeline is chained on success: Plan → Build → Review → Done; a failed Review goes back to Build
+  expect(cols.slice(1, 4).map((c) => [c.trigger?.onSuccess, c.trigger?.onFailure])).toEqual([[cols[2].id, null], [cols[3].id, null], [cols[4].id, cols[2].id]])
   expect(cols[2].trigger?.permission).toBe('full')
   expect(cols[0].trigger).toBeNull()
 })

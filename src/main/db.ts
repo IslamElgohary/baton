@@ -102,8 +102,9 @@ const DEFAULT_SETTINGS: Settings = {
   notifications: { question: true, done: true, failed: true, finished: true }
 }
 
-/** Default columns for a new board. Triggers use `harness` (the first registered one). Each ⚡ column sends successes to the next column. */
-function defaultColumns(harness: string): { name: string; is_done?: number; trigger?: Trigger }[] {
+/** Default columns for a new board. Triggers use `harness` (the first registered one). Each ⚡ column sends successes to the next
+ * column; a `failBack` column sends failures to the previous one (a failed review goes back to Build). */
+function defaultColumns(harness: string): { name: string; is_done?: number; trigger?: Trigger; failBack?: true }[] {
   const t = (permission: Trigger['permission'], prompt: string): Trigger =>
     ({ harness, model: '', permission, prompt, onSuccess: null, onFailure: null })
   return [
@@ -111,9 +112,12 @@ function defaultColumns(harness: string): { name: string; is_done?: number; trig
     { name: 'Plan', trigger: t('read',
       'Task: {{task.title}}\n\n{{task.description}}\n\nInvestigate the repository and write a concise, step-by-step implementation plan for this task. Save the full plan as an artifact named plan.md. Ask me if a requirement is unclear.') },
     { name: 'Build', trigger: t('full',
-      'Task: {{task.title}}\n\n{{task.description}}\n\nPlan (artifact plan.md, may be empty):\n{{artifact.plan.md}}\n\nNotes from the previous step:\n{{prev.summary}}\n\nImplement the task in this repository. Commit your changes with a clear message, then summarize what you changed.') },
-    { name: 'Review', trigger: t('read',
-      'Task: {{task.title}}\n\n{{task.description}}\n\nReview these changes (branch {{branch}} vs {{base}}). Read the surrounding code as needed. Report bugs, risks and missing pieces concisely.\n\n{{diff}}') },
+      'Task: {{task.title}}\n\n{{task.description}}\n\nPlan (artifact plan.md, may be empty):\n{{artifact.plan.md}}\n\nNotes from the previous step:\n{{prev.summary}}\n\nFindings from the last review (artifact review.md, empty before the first review):\n{{artifact.review.md}}\n\nImplement the task in this repository. If there are review findings, fix them. Commit your changes with a clear message, then summarize what you changed.') },
+    { name: 'Review', failBack: true, trigger: t('read',
+      'Task: {{task.title}}\n\n{{task.description}}\n\nReview these changes (branch {{branch}} vs {{base}}). Read the surrounding code as needed. ' +
+      'Save your findings as an artifact named review.md: bugs, risks and missing pieces, concisely (or "No issues found."). ' +
+      'If anything must be fixed before merging, end with [FAILED] and a one-line summary, and the task goes back to Build. ' +
+      'Do not fail over style nits or optional suggestions.\n\n{{diff}}') },
     { name: 'Done', is_done: 1 }
   ]
 }
@@ -218,9 +222,10 @@ export function createDb(file: string) {
         // The done column finishes cards that reach it.
         const ids = cols.map((c, i) => Number(run('INSERT INTO columns (board_id, name, position, is_done, finish_on_enter) VALUES (?, ?, ?, ?, ?)',
           id, c.name, i, c.is_done ?? 0, c.is_done ?? 0).lastInsertRowid))
-        // Chain the pipeline: on success, each ⚡ column moves the card to the next column (… → Review → Done).
+        // Chain the pipeline: on success, each ⚡ column moves the card to the next column (… → Review → Done); a failed Review goes back to Build.
         cols.forEach((c, i) => {
-          if (c.trigger) run('UPDATE columns SET trigger_json = ? WHERE id = ?', JSON.stringify({ ...c.trigger, onSuccess: ids[i + 1] ?? null }), ids[i])
+          if (c.trigger) run('UPDATE columns SET trigger_json = ? WHERE id = ?',
+            JSON.stringify({ ...c.trigger, onSuccess: ids[i + 1] ?? null, onFailure: c.failBack ? ids[i - 1] : null }), ids[i])
         })
         return id
       })

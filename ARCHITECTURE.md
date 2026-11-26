@@ -10,14 +10,14 @@ src/main/ipc-args.ts                argument checks for every API method, run be
 src/main/db.ts                      createDb(path): schema, versioned upgrades, queries (node:sqlite)
 src/main/session.ts                 startSession(): drives one agent CLI session (turns, protocol, artifacts, kill)
 src/main/runner.ts                  createRunner(deps): queue, per-task sessions, routing, dependencies, auto-start
-src/main/breakdown.ts               createBreakdowns(deps): epic → draft task list via a read-only session
+src/main/breakdown.ts               createBreakdowns(deps): epic brainstorm + draft task breakdown via read-only sessions
 src/main/finish.ts                  createFinisher(deps): merge or PR, stacked PRs, worktree cleanup
 src/main/git.ts                     createGit(exec): worktrees, merges, diffs, pushes
 src/main/proc.ts                    exec without a shell, login-shell PATH, which
 src/main/security.ts                isAppUrl(): what counts as the app's own page
 src/main/harnesses/                 Harness interface, registry, and adapters (pi, Antigravity)
 src/preload/index.ts                window.api.invoke(channel, …args) / on(event)
-src/renderer/src/                   App, Board (dnd-kit), dialogs, Transcript, Settings
+src/renderer/src/                   App, Board (dnd-kit), dialogs, AnswerBox, Transcript, Settings
 test/                               fake harness and captured CLI output used by the tests
 e2e/                                tests against the real agent CLIs (pi, Antigravity)
 ```
@@ -32,13 +32,13 @@ SQLite in the app's data folder. `db.ts` creates the base schema and then applie
 |---|---|
 | `boards` | repository path, base branch, finish mode (`merge` / `pr`) |
 | `columns` | position, done flag, finish-on-enter flag, trigger (JSON: harness, model, permission, prompt, on-success / on-failure column) |
-| `tasks` | column, position, epic, branch, worktree, status, finish state, auto-start flag |
+| `tasks` | column, position, epic, branch, worktree, status, finish state, auto-start flag, archived timestamp, unread attention kind |
 | `task_deps` | blocked-by edges (no cycles; checked on write) |
 | `epics` | title, description, color, pending breakdown draft |
 | `runs` | one agent session: column, harness, model, harness session id, result, pending question |
 | `run_events` | the session transcript, one normalized event per row |
 | `artifacts` | documents agents saved, one per task and name |
-| `settings` | parallel runs, idle timeout, max turns, binary path overrides |
+| `settings` | parallel runs, idle timeout, max turns, binary path overrides, notification toggles |
 
 ## Sessions
 
