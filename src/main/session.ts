@@ -73,7 +73,8 @@ export interface SessionSpec {
   resume?: string
   firstTurn: string
   maxTurns: number
-  idleMs: number
+  /** Kill the session after this many minutes without output. */
+  idleTimeoutMin: number
   spawn: Spawn
   onEvent: (e: SessionEvent) => void
   onSessionId: (id: string) => void
@@ -106,10 +107,12 @@ export function startSession(s: SessionSpec): { kill: (reason: string) => void; 
     setTimeout(() => { if (!exited) killGroup(child.pid, 'SIGKILL') }, 5000).unref()
   }
 
+  const idleMin = Math.max(1, s.idleTimeoutMin)
+  const idleMs = Math.min(idleMin * 60_000, 2 ** 31 - 1) // setTimeout's max delay
   let idle: NodeJS.Timeout | undefined
   const touch = () => {
     clearTimeout(idle)
-    idle = setTimeout(() => kill(`No output for ${Math.round(s.idleMs / 60_000)} min — killed`), s.idleMs)
+    idle = setTimeout(() => kill(`No output for ${idleMin} min — killed`), idleMs)
   }
 
   let turns = 0

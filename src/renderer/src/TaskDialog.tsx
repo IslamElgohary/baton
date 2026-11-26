@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Artifact, Board, Column, Epic, Run, Task } from '../../shared/types'
 import { call, onPush } from './api'
 import type { Act } from './App'
@@ -28,6 +28,8 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
   const busy = task.status === 'queued' || task.status === 'running' || task.status === 'waiting'
   const question = task.status === 'waiting' ? runs.find((r) => r.question)?.question : null
   const dirty = title !== task.title || description !== task.description
+  const runsRef = useRef(runs)
+  runsRef.current = runs
 
   useEffect(() => {
     const load = () => {
@@ -39,10 +41,8 @@ export function TaskDialog({ task, board, tasks, columns, epics, act, onClose }:
       if (e.type === 'changed') load()
       // Live transcript: append each streamed event to its session (reload if it's a new one).
       if (e.type === 'session' && e.taskId === task.id) {
-        setRuns((rs) => {
-          if (!rs.some((r) => r.id === e.runId)) { load(); return rs }
-          return rs.map((r) => r.id === e.runId ? { ...r, events: [...r.events, e.event] } : r)
-        })
+        if (!runsRef.current.some((r) => r.id === e.runId)) load()
+        else setRuns((rs) => rs.map((r) => r.id === e.runId ? { ...r, events: [...r.events, e.event] } : r))
       }
     })
   }, [task.id, act])
@@ -161,7 +161,7 @@ function ArtifactView({ artifact, column }: { artifact: Artifact; column?: Colum
   )
 }
 
-/** Blocked-by chips plus a picker; the task's trigger waits until every blocker is in a done column. */
+/** Blocked-by chips plus a picker; the task's trigger waits until every blocker succeeded or is in a done column. */
 function Blockers({ task, tasks, columns, act }: { task: Task; tasks: Task[]; columns: Column[]; act: Act }) {
   const set = (ids: number[]) => act(call('setBlockers', task.id, ids))
   const isDone = (t: Task) => t.status === 'succeeded' || !!columns.find((c) => c.id === t.column_id)?.is_done // resolved

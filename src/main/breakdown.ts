@@ -108,7 +108,7 @@ export function createBreakdowns(d: BreakdownDeps) {
         harness, bin, cwd: board.repo_path, model, permission: 'read', // read-only: safe in the main checkout
         firstTurn: breakdownPrompt(epic.title, epic.description) + (harness.promptNote?.('read') ?? '') + protocol({ questions: false }),
         maxTurns: settings.maxTurns,
-        idleMs: Math.min(Math.max(1, settings.idleTimeoutMin) * 60_000, 2 ** 31 - 1),
+        idleTimeoutMin: settings.idleTimeoutMin,
         spawn: d.spawn,
         onEvent: record,
         onSessionId: () => {},

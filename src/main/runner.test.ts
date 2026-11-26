@@ -152,6 +152,16 @@ test('concurrency limit queues extra tasks', async () => {
   expect(db.getTask(a).status).toBe('succeeded')
 })
 
+test('a failure before the session exists marks the card failed, not stuck running', async () => {
+  const { db, boardId, plan, runner, trigger } = setup()
+  db.updateColumn(plan.id, { trigger: trigger('hang') })
+  const id = db.createTask(boardId, plan.id, 'x')
+  db.lastRun = () => { throw new Error('boom') }
+  runner.retry(id)
+  await until(() => db.getTask(id).status === 'failed')
+  expect(runner.activeCount()).toBe(0)
+})
+
 test('stop kills the session and keeps the card in its column', async () => {
   const { db, boardId, backlog, plan, runner, trigger } = setup()
   db.updateColumn(plan.id, { trigger: trigger('hang', 'go', null, backlog.id) })

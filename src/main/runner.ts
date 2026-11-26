@@ -107,34 +107,36 @@ export function createRunner(d: RunnerDeps) {
   }
 
   async function start({ taskId, resume, message }: Queued) {
-    const task = d.db.getTask(taskId)
-    const col = d.db.getColumn(task.column_id)
-    const trigger = col?.trigger
-    if (!col || !trigger) { // trigger removed while queued
-      d.db.setStatus(taskId, 'idle')
-      return changed()
-    }
-    const { board } = d.db.getBoard(task.board_id)
-    const settings = d.db.getSettings()
-
-    // A new column = a new session. Answers and "Run again" continue the column's last session.
-    const last = resume ? d.db.lastRun(taskId, col.id) : undefined
-    const reuse = last?.session_id && last.harness === trigger.harness ? last : undefined
-    if (last && !reuse && last.ended_at === null) d.db.finishRun(last.id, false, 'Continued in a new session')
-    const runId = reuse ? reuse.id : d.db.createRun({ task_id: taskId, column_id: col.id, harness: trigger.harness, model: trigger.model })
-    if (reuse) { d.db.reopenRun(runId); d.db.setRunQuestion(runId, null) }
-    const a: Active = { stop: null, forceStop: null, runId, columnId: col.id, killReason: null, route: true, move: true }
-    active.set(taskId, a)
-    // New work isn't merged yet; auto-start has done its job once a session runs.
-    d.db.setTaskState(taskId, { merged_at: null, merge_base: null, auto_start: 0 })
-    changed()
-
+    let a: Active | undefined // set once the session's run exists
     const record = (event: SessionEvent) => {
-      d.db.appendEvent(runId, event)
-      d.push({ type: 'session', runId, taskId, event })
+      if (!a) return
+      d.db.appendEvent(a.runId, event)
+      d.push({ type: 'session', runId: a.runId, taskId, event })
     }
 
     try {
+      const task = d.db.getTask(taskId)
+      const col = d.db.getColumn(task.column_id)
+      const trigger = col?.trigger
+      if (!col || !trigger) { // trigger removed while queued
+        d.db.setStatus(taskId, 'idle')
+        return changed()
+      }
+      const { board } = d.db.getBoard(task.board_id)
+      const settings = d.db.getSettings()
+
+      // A new column = a new session. Answers and "Run again" continue the column's last session.
+      const last = resume ? d.db.lastRun(taskId, col.id) : undefined
+      const reuse = last?.session_id && last.harness === trigger.harness ? last : undefined
+      if (last && !reuse && last.ended_at === null) d.db.finishRun(last.id, false, 'Continued in a new session')
+      const runId = reuse ? reuse.id : d.db.createRun({ task_id: taskId, column_id: col.id, harness: trigger.harness, model: trigger.model })
+      a = { stop: null, forceStop: null, runId, columnId: col.id, killReason: null, route: true, move: true }
+      active.set(taskId, a)
+      if (reuse) { d.db.reopenRun(runId); d.db.setRunQuestion(runId, null) }
+      // New work isn't merged yet; auto-start has done its job once a session runs.
+      d.db.setTaskState(taskId, { merged_at: null, merge_base: null, auto_start: 0 })
+      changed()
+
       const harness = d.harnesses.find((h) => h.id === trigger.harness)
       if (!harness) throw new Error(`Unknown harness "${trigger.harness}"`)
       const bin = d.resolveBin(harness.id)
@@ -179,7 +181,7 @@ export function createRunner(d: RunnerDeps) {
         resume: reuse?.session_id ?? undefined,
         firstTurn,
         maxTurns: settings.maxTurns,
-        idleMs: Math.min(Math.max(1, settings.idleTimeoutMin) * 60_000, 2 ** 31 - 1),
+        idleTimeoutMin: settings.idleTimeoutMin,
         spawn: d.spawn,
         onEvent: record,
         onSessionId: (id) => d.db.setRunSession(runId, id),
@@ -194,6 +196,11 @@ export function createRunner(d: RunnerDeps) {
       finish(taskId, a, await session.result)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
+      if (!a) { // failed before the session existed: don't leave the card 'running' with nothing behind it
+        console.error('session start failed', e)
+        d.db.setStatus(taskId, 'failed')
+        return changed()
+      }
       record({ kind: 'info', text: msg })
       finish(taskId, a, { type: 'failed', text: msg })
     }

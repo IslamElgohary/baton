@@ -70,7 +70,6 @@ const STEPS: Step[] = [
   }
 ]
 
-/** Tasks with their artifact count and blockers. */
 /**
  * The task lifecycle: which status may follow which. Only the runner changes statuses (and recover(), after a
  * restart: running → failed). queued = waiting for a free slot (or for its blockers); waiting = paused on a question.
@@ -84,6 +83,7 @@ const NEXT_STATUS: Record<TaskStatus, TaskStatus[]> = {
   failed: ['queued']
 }
 
+/** Tasks with their artifact count and blockers. */
 const TASKS = `SELECT t.*, (SELECT count(*) FROM artifacts a WHERE a.task_id = t.id) AS artifacts,
   (SELECT group_concat(blocked_by_id) FROM task_deps d WHERE d.task_id = t.id) AS blocked_by FROM tasks t`
 
@@ -335,6 +335,8 @@ export function createDb(file: string) {
       void run('UPDATE epics SET draft_json = ? WHERE id = ?', draft ? JSON.stringify(draft) : null, id),
     /** Approve a breakdown: create its tasks (first column, in order) with their dependencies. Returns the new ids. */
     createTasksFromDraft(epicId: number, draft: DraftTask[]): number[] {
+      /** Draft index `b` is a valid blocker of task `i`: an earlier task in the draft. */
+      const earlier = (b: number, i: number) => Number.isInteger(b) && b >= 0 && b < i
       return tx(() => {
         const epic = get<{ board_id: number }>('SELECT board_id FROM epics WHERE id = ?', epicId)
         if (!epic) throw new Error(`Epic ${epicId} not found`)
@@ -343,17 +345,17 @@ export function createDb(file: string) {
         const ids = draft.map((t, i) => Number(run(
           'INSERT INTO tasks (board_id, epic_id, column_id, position, title, description, auto_start) VALUES (?, ?, ?, ?, ?, ?, ?)',
           epic.board_id, epicId, first, taskIds(first).length, t.title, t.description,
-          t.blockedBy.some((b) => b >= 0 && b < i) ? 1 : 0).lastInsertRowid))
+          t.blockedBy.some((b) => earlier(b, i)) ? 1 : 0).lastInsertRowid))
         draft.forEach((t, i) => {
           for (const b of new Set(t.blockedBy)) {
-            if (Number.isInteger(b) && b >= 0 && b < i) run('INSERT INTO task_deps (task_id, blocked_by_id) VALUES (?, ?)', ids[i], ids[b])
+            if (earlier(b, i)) run('INSERT INTO task_deps (task_id, blocked_by_id) VALUES (?, ?)', ids[i], ids[b])
           }
         })
         run('UPDATE epics SET draft_json = NULL WHERE id = ?', epicId)
         return ids
       })
     },
-    /** Internal fields, written by the runner and the finisher. */
+    // Internal fields, written by the runner and the finisher.
     /** Change a task's status; throws on a change the lifecycle doesn't allow (a bug). */
     setStatus(id: number, to: TaskStatus) {
       const from = mustTask(id).status

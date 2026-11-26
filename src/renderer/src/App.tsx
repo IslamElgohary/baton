@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Board as BoardT, BoardData, HarnessInfo } from '../../shared/types'
 import { call, onPush } from './api'
 import { Board } from './Board'
@@ -28,12 +28,17 @@ export function App() {
   /** Run an IPC call, surfacing failures in the error bar. */
   const act = useCallback(<T,>(p: Promise<T>) => p.catch((e: Error) => { setError(e.message); return undefined }), [])
 
+  // Refreshes overlap (a burst of 'changed' pushes): only the latest may apply, or an older board state wins.
+  const latest = useRef(0)
   const refresh = useCallback(async () => {
+    const n = ++latest.current
     const list = await call('listBoards')
+    if (n !== latest.current) return
     setBoards(list)
     const id = list.some((b) => b.id === boardId) ? boardId : list[0]?.id ?? null
     if (id !== boardId) setBoardId(id)
-    setData(id ? await call('getBoard', id) : null)
+    const board = id ? await call('getBoard', id) : null
+    if (n === latest.current) setData(board)
   }, [boardId])
 
   useEffect(() => { act(refresh()) }, [refresh, act])
